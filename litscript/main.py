@@ -109,7 +109,7 @@ class Litscript(object):
             self._process(sourcefile.read())
 
 def main():
-    if len(sys.argv)==1 and len(args)==0:
+    if len(sys.argv)==1:
         print("This is litscript %s, enter litscript -h for help"
                 % __version__)
         sys.exit()
