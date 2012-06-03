@@ -146,7 +146,7 @@ def main():
                       default=sys.stdin,
                       help='The to processing source file.')
 
-    arguments = vars(parser.parse_args(args))
+    arguments = vars(parser.parse_args())
 
     #arguments['default']['processor'] = 'ipython2'
 
