@@ -7,7 +7,7 @@ from .processors import IPython2Processor, ChunkProcessor
 from .__init__ import __version__
 from .document import Document
 
-if sys.version_info[0] > 3:
+if sys.version_info[0] => 3:
     from configparser import SafeConfigParser
 else :
     from ConfigParser import SafeConfigParser
