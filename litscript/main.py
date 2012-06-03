@@ -161,7 +161,7 @@ def main(args=None):
         #print(inst.settings)
         print(inst.document)
         for i in inst.document:
-            print i.options
+            print(i.options)
 
     lit = Litscript(arguments)
     lit.main()
