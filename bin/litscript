@@ -1,0 +1,9 @@
+#!/usr/bin/python2
+
+import sys
+sys.path.append('/Martin/Git/litscript/')
+from litscript import main
+
+main.main()
+
+# vim: set ts=4 sw=4 tw=79 :
