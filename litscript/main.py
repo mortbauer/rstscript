@@ -108,7 +108,7 @@ class Litscript(object):
         for sourcefile in self.cmd['source']:
             self._process(sourcefile.read())
 
-def main(args):
+def main():
     if len(sys.argv)==1 and len(args)==0:
         print("This is litscript %s, enter litscript -h for help"
                 % __version__)
