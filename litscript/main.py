@@ -100,11 +100,9 @@ class Litscript(object):
         self.cmd = cmd_settings
         self.config = _config_parse(self.cmd['configfile'])
         self.processors = _load_processor(self.cmd['plugindir'])
-
     def _process(self,raw):
         self.document = Document(raw,self.processors)
-        
-    def main(self):
+    def mainl(self):
         for sourcefile in self.cmd['source']:
             self._process(sourcefile.read())
 
@@ -163,11 +161,12 @@ def main():
         for i in inst.document:
             print(i.options)
 
-    lit = Litscript(arguments)
-    lit.main()
-    if arguments['debug'] == True:
-        debug(lit)
-    return lit
+    print(arguments)
+    #lit = Litscript(arguments)
+    #lit.main()
+    #if arguments['debug'] == True:
+        #debug(lit)
+    #return lit
 
 if __name__ == '__main__':
     main()

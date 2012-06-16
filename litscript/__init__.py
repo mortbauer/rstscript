@@ -1,4 +1,4 @@
-import litscript
+#import litscript
 
 __productname__ = 'litscript'
 __version__ = '0.1'
