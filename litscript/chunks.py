@@ -7,13 +7,14 @@ import re
 def testcase():
     f = open('test.nw', 'rt')
     c = chunker(f)
-    e = executer(c)
+    e = processor(c)
     post_processor(e)
+    f.close()
 
 
 def post_processor(fileobject:'iterable'):
     for chunk in fileobject:
-        print(chunk)
+        print(chunk,chunk['content'].getvalue())
 
 
 def processor(fileobject:'iterable'):
@@ -24,16 +25,18 @@ def processor(fileobject:'iterable'):
     #:instantiate StringIO object
     stdout_ = StringIO()
     stderr_ = StringIO()
-    namespace_global = {}
-    namespace_local = {}
+    namesp_global = {}
+    namesp_local = {}
 
     for chunk in fileobject:
         if chunk['type'] == 'code':
+            code = chunk['content'].getvalue()
+            #print('CODE: ',code,type(code),repr(code))
             try:
                 #:change std's
                 sys.stdout = stdout_
                 sys.stderr = stderr_
-                exec(chunk['content'], namespace_global, namespace_local)
+                exec(code, namesp_global, namesp_local)
             except:
                 #:get raised Exceptions into the faked stderr
                 traceback.print_exc()
@@ -41,6 +44,7 @@ def processor(fileobject:'iterable'):
                 #:restore std's
                 sys.stdout = stdout
                 sys.stderr = stderr
+
             chunk['stdout'] = stdout_.getvalue()
             chunk['stderr'] = stderr_.getvalue()
         yield chunk
@@ -52,7 +56,7 @@ def chunker(fileobject:'iterable', chunk_start='%<<', chunk_end='%>>'):
     by a three character long token at the beginning of a line.
     It only chenks for the delimiters at the begining of each iterated piece.
     """
-    content = ''
+    content = StringIO()
     get_opts = re.compile('([a-zA-Z_\-0-9]*)\s*=\s*([a-zA-Z_\-0-9]*)')
 
     if len(chunk_start) != len(chunk_end):
@@ -68,13 +72,13 @@ def chunker(fileobject:'iterable', chunk_start='%<<', chunk_end='%>>'):
             if line_start == chunk_start:
                 pre_args = dict(get_opts.findall(line[token_length:]))
                 yield {'type':'text','content':content}
-                content = ''
+                content = StringIO()
             else:
                 post_args = dict(get_opts.findall(line[token_length:]))
                 yield {'type':'code', 'content':content,
                          'pre_args':pre_args, 'post_args':post_args}
-                content = ''
+                content = StringIO()
         else:
-            content += line
+            content.write(line)
 
     yield {'type':'text','content':content}
