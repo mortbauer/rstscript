@@ -16,7 +16,7 @@ def post_processor(fileobject:'iterable'):
         print(chunk)
 
 
-def executer(fileobject:'iterable'):
+def processor(fileobject:'iterable'):
     """Executes the given expression in the given local namespace."""
     #:store the reference to the std's
     stdout = sys.stdout
@@ -53,7 +53,7 @@ def chunker(fileobject:'iterable', chunk_start='%<<', chunk_end='%>>'):
     It only chenks for the delimiters at the begining of each iterated piece.
     """
     content = ''
-    get_opts = re.compile('([a-zA-Z_\-0-9]*)\s*=\s*([a-zA-Z_\-0-9])')
+    get_opts = re.compile('([a-zA-Z_\-0-9]*)\s*=\s*([a-zA-Z_\-0-9]*)')
 
     if len(chunk_start) != len(chunk_end):
         raise ValueError("The length of the start and end"
