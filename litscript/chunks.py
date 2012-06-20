@@ -33,6 +33,7 @@ def read(fileobject, chunk_start='%<<', chunk_end='%>>', opt_delim='='):
     get_opts = re.compile(re_str.format(opt_delim))
     esc_chunk_start = '%{}'.format(chunk_start)
     esc_chunk_end = '%{}'.format(chunk_end)
+    content = StringIO()
 
     if len(chunk_start) != len(chunk_end):
         raise ValueError("Length of the start and end tokens must be equal.")
@@ -42,28 +43,32 @@ def read(fileobject, chunk_start='%<<', chunk_end='%>>', opt_delim='='):
     for line in fileobject:
         line_start = line[:token_length]
         line_startm = line[:token_length + 1]
-
-        if line_start == chunk_start or line_start == chunk_end:
-            if line_start == chunk_start:
-                pre_args = dict(get_opts.findall(line[token_length:]))
-                yield {'type':'text','content_in':content}
-                content = StringIO()
-                delimtercounter += 1
-            else:
-                post_args = dict(get_opts.findall(line[token_length:]))
-                yield {'type':'code', 'content_in':content,
-                         'pre_args':pre_args, 'post_args':post_args}
-                content = StringIO()
-                delimtercounter -= 1
-        elif line_startm == esc_chunk_start or line_startm == esc_chunk_end:
+        # start of chunk
+        if line_start == chunk_start:
+            pre_args = dict(get_opts.findall(line[token_length:]))
+            yield {'type':'text','content_in':content}
+            content.seek(0)
+            delimtercounter += 1
+        # end of chunk
+        elif line_start == chunk_end:
+            content.truncate()
+            post_args = dict(get_opts.findall(line[token_length:]))
+            yield {'type':'code', 'content_in':content,
+                        'pre_args':pre_args, 'post_args':post_args}
+            content.seek(0)
+            delimtercounter -= 1
+        # escaped
+        elif (line_startm == esc_chunk_start or line_startm == esc_chunk_end):
             content.write(line[1:])
+        # normal
         else:
             content.write(line)
 
     if delimtercounter != 0:
         raise LitscriptException('You may have forgotten to end a code chunk.')
-
-    yield {'type':'text','content_in':content}
+    else:
+        content.truncate()
+        yield {'type':'text','content_in':content}
 
 
 def pre_process(fileobject):
