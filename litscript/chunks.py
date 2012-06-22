@@ -2,12 +2,75 @@ import traceback
 from io import StringIO
 import sys
 import re
+import abc
 
 
 class LitscriptException(Exception):
     """Base class for exceptions in this module."""
     pass
 
+class mbase(type):
+    def __new__(meta,clsname,bases,clsdict):
+        print('mbase new',meta,clsname,bases,clsdict)
+        if not hasattr(meta,'list'):
+            meta.list = []
+        meta.list.append(clsname)
+        return type.__new__(meta, clsname, bases, clsdict)
+
+    def __init__(meta,clsname,bases,clsdict):
+        print('mbase init',meta,clsname,bases,clsdict)
+
+class fmbase(object,metaclass=mbase):
+    def __new__(cls):
+        print(cls)
+class rmbase(object,metaclass=mbase):
+    def __new__(cls):
+        print(cls)
+
+class tt(fmbase):
+    pass
+
+class classproperty(object):
+     def __init__(self, getter):
+         self.getter= getter
+     def __get__(self, instance, owner):
+         return self.getter(owner)
+
+class PluginBase(metaclass=abc.ABCMeta):
+    @classmethod
+    def register(self):
+        print(self)
+        self.plugins[self.name] = self.process
+    @abc.abstractproperty
+    def name(self):
+        pass
+    @abc.abstractmethod
+    def process(self):
+        pass
+
+class Pre(PluginBase):
+    plugins = {}
+
+class Pre_Pass(Pre):
+
+    @classproperty
+    def name(self):
+        return 'default'
+
+    def process(self,code):
+        pass
+
+class Post(PluginBase):
+    plugins = {}
+
+class Post_Pass(Post):
+
+    @classproperty
+    def name(self):
+        return 'default'
+
+    def process(self,code):
+        pass
 
 def testcase():
     f = open('test.nw', 'rt')
