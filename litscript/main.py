@@ -3,17 +3,15 @@ import sys
 import re
 from argparse import ArgumentParser, FileType
 
-from .processors import IPython2Processor, ChunkProcessor
 from .__init__ import __version__
-from .document import Document
 
 if sys.version_info[0] >= 3:
     from configparser import SafeConfigParser
-else :
+else:
     from ConfigParser import SafeConfigParser
 
-def _load_processor(plugindir=None):
-    processors = {}
+
+def _load_plugins(plugindir=None):
     plugindir_paths = []
 
     # add the plugin-directory paths if they're not already in the path
@@ -43,15 +41,8 @@ def _load_processor(plugindir=None):
     plugin_modules = {}
     for module in modules:
         plugin_modules[module] = __import__(module)
-    # discover all plugins in the loaded modules
-    # list of classes which are based on ChunkProcessorBase
-    plugin_classes = ChunkProcessor.__subclasses__()
-    # create instances of each plugin class object,
-    # and store them in the global instance dictionary *processors*
-    for i in plugin_classes:
-        processors[i.name] = i
 
-    return processors
+
 def _config_parse(config_file=None):
     """ Parse Configfiles
 
@@ -64,7 +55,7 @@ def _config_parse(config_file=None):
 
     Optionally there can be given the path of another file.
 
-    The order of the prased files is like:
+    The order of the parsed files is like:
 
     1. if it exists the optinal given file
     2. $XDG_CONFIG_HOME/litscript/config
@@ -94,20 +85,26 @@ def _config_parse(config_file=None):
     settings['parsed_configfiles'] = parsed_files
 
     return settings
+
+
 class Litscript(object):
     version = __version__
+
     def __init__(self,cmd_settings):
         self.cmd = cmd_settings
         self.config = _config_parse(self.cmd['configfile'])
-        self.processors = _load_processor(self.cmd['plugindir'])
+        _load_plugins(self.cmd['plugindir'])
+
     def _process(self,raw):
         self.document = Document(raw,self.processors)
+
     def mainl(self):
         for sourcefile in self.cmd['source']:
             self._process(sourcefile.read())
 
+
 def main():
-    if len(sys.argv)==1:
+    if len(sys.argv) == 1:
         print("This is litscript %s, enter litscript -h for help"
                 % __version__)
         sys.exit()
@@ -116,25 +113,26 @@ def main():
             version="litscript " + __version__)
 
     parser.add_argument("-w", "--weave", dest="weave",
-                      action = "store", default='.rst',
+                      action="store", default='.rst',
                       help="Should the document be weaved? If yes, provide the"
                       "extension of the weaved output document.")
     parser.add_argument("-t", "--tangl", dest="tangle",
-                      action = "store", default='.py',
+                      action="store", default='.py',
                       help="Should the document be tangeld? If yes provide the"
                       "ending of the tangeld output document.")
     parser.add_argument("-f", "--format", dest="format",
-                      action = "store", default="rst",
-                      help="The output format: 'sphinx', 'rst' (default), 'pandoc' or 'tex'")
+                      action="store", default="rst",
+                      help="The output format: 'sphinx', 'rst' (default),"
+                        "'pandoc' or 'tex'")
     parser.add_argument("--figure-directory", dest="figdir",
-                      action = "store", default = 'figures',
+                      action="store", default='figures',
                       help="Directory path for matplolib graphics: Default 'figures'")
     parser.add_argument("-g","--figure-format", dest="figfmt",
-                      action = "store", default="png",
+                      action="store", default="png",
                       help="Figure format for matplolib graphics: Defaults to"
                       "'png' for rst and Sphinx html documents and 'pdf' for tex")
     parser.add_argument("-p", "--plugin-directory", dest="plugindir",
-                      action = "store", default=None,
+                      action="store", default=None,
                       help="Optional directory containing litscript plugin files.")
     parser.add_argument("-c", "--config", dest="configfile", default=None,
                       help="Specify the litscript config file.")
@@ -146,27 +144,7 @@ def main():
 
     arguments = vars(parser.parse_args())
 
-    #arguments['default']['processor'] = 'ipython2'
-
-    def debug(inst):
-        print('cmd')
-        print(inst.cmd)
-        print('config')
-        print(inst.config)
-        print('processors')
-        print(inst.processors)
-        #print('settings')
-        #print(inst.settings)
-        print(inst.document)
-        for i in inst.document:
-            print(i.options)
-
     print(arguments)
-    #lit = Litscript(arguments)
-    #lit.main()
-    #if arguments['debug'] == True:
-        #debug(lit)
-    #return lit
 
 if __name__ == '__main__':
     main()

@@ -16,7 +16,6 @@ setup(name='litscript',
       license=litscript.__copyright__,
       packages=['litscript'],
       package_data={'litscript':['defaults/litscript.rc.spec']},
-      scripts=['bin/litscript'],
       requires=[
           'argparse (>=0.9)',
           'subprocess (>=2.7)'],

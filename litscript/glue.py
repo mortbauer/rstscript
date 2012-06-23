@@ -6,7 +6,7 @@ import logging
 def worker(infilen,outfilen,settings={},log='console',
            logfile='litlog',level='ERROR'):
     # register all imported plugins
-    plugs  = Pre.__subclasses__()
+    plugs = Pre.__subclasses__()
     plugs.extend(Proc.__subclasses__())
     plugs.extend(Post.__subclasses__())
     for x in plugs:
