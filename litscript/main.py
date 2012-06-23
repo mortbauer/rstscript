@@ -104,10 +104,6 @@ class Litscript(object):
 
 
 def main():
-    if len(sys.argv) == 1:
-        print("This is litscript %s, enter litscript -h for help"
-                % __version__)
-        sys.exit()
 
     parser = ArgumentParser(usage="litscript [options] sourcefile",
             version="litscript " + __version__)
@@ -141,6 +137,9 @@ def main():
     parser.add_argument('source', type = FileType('r'), nargs='*',
                       default=sys.stdin,
                       help='The to processing source file.')
+
+    if len(sys.argv) == 1:
+        parser.print_help()
 
     arguments = vars(parser.parse_args())
 
