@@ -1,23 +1,14 @@
-import traceback
 from io import StringIO
-import sys
 import re
+import logging
+
+__all__ = ['read','default_args','pre_process','process','post_process',
+           'print_args','write']
 
 
 class LitscriptException(Exception):
     """Base class for exceptions in this module."""
     pass
-
-
-def testcase():
-    f = open('test.nw', 'rt')
-    c = read(f)
-    p = process(c)
-    pp = post_process(p)
-    out = open('test.rst', 'wt')
-    write(pp,out)
-    out.close()
-    f.close()
 
 
 def read(fileobject, chunk_start='%<<', chunk_end='%>>', opt_delim='='):
@@ -29,6 +20,7 @@ def read(fileobject, chunk_start='%<<', chunk_end='%>>', opt_delim='='):
 
     content = StringIO()
     delimtercounter = 0
+    chunkcounter = 0
     re_str = '([a-zA-Z_\-0-9]*)\s*{}\s*([a-zA-Z_\-0-9]*)'
     get_opts = re.compile(re_str.format(opt_delim))
     esc_chunk_start = '%{}'.format(chunk_start)
@@ -40,23 +32,33 @@ def read(fileobject, chunk_start='%<<', chunk_end='%>>', opt_delim='='):
     else:
         token_length = len(chunk_start)
 
+    linecounter = 1
+    linechunk = 0
     for line in fileobject:
         line_start = line[:token_length]
         line_startm = line[:token_length + 1]
+
         # start of chunk
         if line_start == chunk_start:
+            content.truncate()
             pre_args = dict(get_opts.findall(line[token_length:]))
-            yield {'type':'text','content_in':content}
+            yield {'type':'text','content_in':content,'number':chunkcounter,
+                   'start':linechunk}
             content.seek(0)
             delimtercounter += 1
+            chunkcounter += 1
+            linechunk = linecounter
         # end of chunk
         elif line_start == chunk_end:
             content.truncate()
             post_args = dict(get_opts.findall(line[token_length:]))
             yield {'type':'code', 'content_in':content,
-                        'pre_args':pre_args, 'post_args':post_args}
+                   'pre_args':pre_args, 'post_args':post_args,
+                   'number':chunkcounter,'start':linechunk}
             content.seek(0)
             delimtercounter -= 1
+            chunkcounter += 1
+            linechunk = linecounter
         # escaped
         elif (line_startm == esc_chunk_start or line_startm == esc_chunk_end):
             content.write(line[1:])
@@ -64,11 +66,29 @@ def read(fileobject, chunk_start='%<<', chunk_end='%>>', opt_delim='='):
         else:
             content.write(line)
 
-    if delimtercounter != 0:
-        raise LitscriptException('You may have forgotten to end a code chunk.')
-    else:
-        content.truncate()
-        yield {'type':'text','content_in':content}
+        if delimtercounter > 1 or delimtercounter < 0:
+            msg = 'line: {}: You may have forgotten a delimiter.'\
+                    .format(linecounter)
+            logging.error(msg)
+            break
+
+        linecounter += 1
+
+    content.truncate()
+    yield {'type':'text','content_in':content,'number':chunkcounter,
+            'start':linechunk}
+
+
+def default_args(fileobject,pre_def={'proc':'py'},post_def={}):
+    for chunk in fileobject:
+        if chunk['type'] == 'text':
+            yield chunk
+        else:
+            for x in pre_def:
+                chunk['pre_args'].setdefault(x,pre_def[x])
+            for x in post_def:
+                chunk['post_args'].setdefault(x,post_def[x])
+            yield chunk
 
 
 def pre_process(fileobject):
@@ -76,36 +96,31 @@ def pre_process(fileobject):
         yield chunk
 
 
-def process(fileobject):
-    """Executes the given expression in the given local namespace."""
-    #:store the reference to the std's
-    stdout = sys.stdout
-    stderr = sys.stderr
-    namesp_global = {}
-    namesp_local = {}
-
+def process(fileobject,procs_avail):
+    proc_name = ''
+    proc_ = None
+    procs_init = {}
     for chunk in fileobject:
-        #:instantiate StringIO object
-        stdout_ = StringIO()
-        stderr_ = StringIO()
-        if chunk['type'] == 'code':
-            code = chunk['content_in'].getvalue()
-            #print('CODE: ',code,type(code),repr(code))
-            try:
-                #:change std's
-                sys.stdout = stdout_
-                sys.stderr = stderr_
-                exec(code, namesp_global, namesp_local)
-            except:
-                #:get raised Exceptions into the faked stderr
-                traceback.print_exc()
-            finally:
-                #:restore std's
-                sys.stdout = stdout
-                sys.stderr = stderr
 
-            chunk['stdout'] = stdout_
-            chunk['stderr'] = stderr_
+        if chunk['type'] != 'code':
+            yield chunk
+            continue
+        if chunk['pre_args']['proc'] != proc_name:
+            proc_name = chunk['pre_args']['proc']
+            if not proc_ in procs_init:
+                try:
+                    procs_init[proc_name] = procs_avail[proc_name]()
+                    proc_ = procs_init[proc_name].process
+                except KeyError as e:
+                    raise e
+            else:
+                proc_ = procs_init[proc_name].process
+
+        try:
+            chunk['stdout'],chunk['stderr'] = proc_(chunk['content_in'])
+        except Exception as e:
+            raise e
+
         yield chunk
 
 
@@ -114,8 +129,31 @@ def post_process(fileobject):
         if chunk['type'] == 'text':
             chunk['content_out'] = (chunk['content_in'],)
         else:
-            chunk['content_out'] = (chunk['content_in'],chunk['stdout'])
+            chunk['content_out'] = (chunk['content_in'],
+                                    chunk['stdout'],
+                                    chunk['stderr'])
         yield chunk
+
+
+def print_args(fileobject):
+    msg = 'chunk: {} line: {} pre_args: {} post_args: {}'
+    for chunk in fileobject:
+        if chunk['type'] == 'code':
+            logging.info(msg.format(chunk['number'],chunk['start'],
+                                   chunk['pre_args'],chunk['post_args']))
+        yield chunk
+
+
+def print_chunk(chunk):
+    msgc = 'content_in: {} stdout: {} stderr: {}'
+    msgt = 'content_in: {}'
+    logging.debug('chunk: {}'.format(chunk['number']))
+    if chunk['type'] == 'code':
+        logging.debug(msgc.format(repr(chunk['content_in'].getvalue()),
+                          repr(chunk['stdout'].getvalue()),
+                          repr(chunk['stderr'].getvalue())))
+    else:
+        logging.debug(msgt.format(repr(chunk['content_in'].getvalue())))
 
 
 def write(fileobject_in, fileobject_out):

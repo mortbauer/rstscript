@@ -1,4 +1,9 @@
+import sys
 import abc
+import traceback
+from io import StringIO
+
+__all__ = ['Pre','Proc','Post','Pre_Nothing','Proc_Python','Post_Nothing']
 
 
 class classproperty(object):
@@ -11,8 +16,7 @@ class classproperty(object):
 class PluginBase(metaclass=abc.ABCMeta):
     @classmethod
     def register(self):
-        print(self)
-        self.plugins[self.name] = self.process
+        self.plugins[self.name] = self
     @abc.abstractproperty
     def name(self):
         pass
@@ -41,14 +45,36 @@ class Pre_Nothing(Pre):
     def process(self,code):
         pass
 
-class Proc_Python(Pre):
+class Proc_Python(Proc):
+
+    def __init__(self):
+        self.globalnm = {}
+        self.localnm = {}
+        self.stdout = StringIO()
+        self.stderr = StringIO()
+        self.stdout_sys = sys.stdout
+        self.stderr_sys = sys.stderr
 
     @classproperty
     def name(self):
-        return 'nothing'
+        return 'py'
 
-    def process(self,code):
-        pass
+    def process(self,fileobject):
+        self.stdout.seek(0)
+        self.stderr.seek(0)
+        code = fileobject.getvalue()
+        try:
+            sys.stdout = self.stdout
+            sys.stderr = self.stderr
+            exec(code, self.globalnm, self.localnm)
+        except:
+            traceback.print_exc()
+        finally:
+            sys.stdout = self.stdout_sys
+            sys.stderr = self.stderr_sys
+        self.stdout.truncate()
+        self.stderr.truncate()
+        return (self.stdout,self.stderr)
 
 
 class Post_Nothing(Post):
