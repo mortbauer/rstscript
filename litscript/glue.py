@@ -2,9 +2,8 @@ from .chunks import *
 from .processors import *
 import logging
 
-
 def worker(infilen,outfilen,settings={},log='console',
-           logfile='litlog',level='ERROR'):
+           logfile='lit.log',level='ERROR'):
     # register all imported plugins
     plugs = Pre.__subclasses__()
     plugs.extend(Proc.__subclasses__())

@@ -1,8 +1,9 @@
+import re
 import os
 import sys
-import re
 from argparse import ArgumentParser, FileType
 
+from .glue import worker
 from .__init__ import __version__
 
 if sys.version_info[0] >= 3:
@@ -11,23 +12,19 @@ else:
     from ConfigParser import SafeConfigParser
 
 
-def _load_plugins(plugindir=None):
+def import_plugins(plugindirs=[]):
     plugindir_paths = []
-
     # add the plugin-directory paths if they're not already in the path
-    if plugindir is not None:
+    for plugindir in plugindirs:
         plugindir_paths.insert(0, os.path.abspath(plugindir))
-    else:
-        plugindir_paths = [
-                    os.path.join(os.path.expanduser('~'),
-                        '.config/litscript/plugins')
-                      ]
     # list all files in plugindirs and add the plugindir_paths to the current
     # pythonpath
     files = []
+    added_paths = []
     for p in plugindir_paths:
         if not p in sys.path:
             sys.path.insert(0, p)
+            added_paths.insert(0,p)
         try:
             files.extend(os.listdir(p))
         except:
@@ -42,8 +39,14 @@ def _load_plugins(plugindir=None):
     for module in modules:
         plugin_modules[module] = __import__(module)
 
+    # remove added paths again
+    for paths in added_paths:
+        sys.path.remove(paths)
 
-def _config_parse(config_file=None):
+    return plugin_modules
+
+
+def parse_config(config_file=None):
     """ Parse Configfiles
 
     Parses standard configuration files, like `.ini` files.
@@ -69,7 +72,6 @@ def _config_parse(config_file=None):
         os.path.join(os.environ.get('XDG_CONFIG_HOME',
                                     os.path.expanduser('~/.config')),
                      'litscript', 'config'),
-        os.path.expanduser('~/.litscript.rc'),
     ]
     if config_file:
         expanded_path = os.path.expanduser(config_file)
@@ -87,65 +89,83 @@ def _config_parse(config_file=None):
     return settings
 
 
-class Litscript(object):
-    version = __version__
-
-    def __init__(self,cmd_settings):
-        self.cmd = cmd_settings
-        self.config = _config_parse(self.cmd['configfile'])
-        _load_plugins(self.cmd['plugindir'])
-
-    def _process(self,raw):
-        self.document = Document(raw,self.processors)
-
-    def mainl(self):
-        for sourcefile in self.cmd['source']:
-            self._process(sourcefile.read())
-
-
-def main():
-
+def make_parser():
     parser = ArgumentParser(usage="litscript [options] sourcefile",
             version="litscript " + __version__)
 
     parser.add_argument("-w", "--weave", dest="weave",
                       action="store", default='.rst',
                       help="Should the document be weaved? If yes, provide the"
-                      "extension of the weaved output document.")
+                      " extension of the weaved output document.")
     parser.add_argument("-t", "--tangl", dest="tangle",
                       action="store", default='.py',
                       help="Should the document be tangeld? If yes provide the"
-                      "ending of the tangeld output document.")
+                      " ending of the tangeld output document.")
     parser.add_argument("-f", "--format", dest="format",
                       action="store", default="rst",
-                      help="The output format: 'sphinx', 'rst' (default),"
-                        "'pandoc' or 'tex'")
+                      help="The output format: 'rst' only "
+                        "one available so far.")
     parser.add_argument("--figure-directory", dest="figdir",
                       action="store", default='figures',
-                      help="Directory path for matplolib graphics: Default 'figures'")
+                      help="Directory path for matplolib graphics:"
+                        " Default 'figures'")
     parser.add_argument("-g","--figure-format", dest="figfmt",
                       action="store", default="png",
                       help="Figure format for matplolib graphics: Defaults to"
-                      "'png' for rst and Sphinx html documents and 'pdf' for tex")
+                        "'png' for rst and Sphinx html documents and 'pdf' "
+                        "for tex")
     parser.add_argument("-p", "--plugin-directory", dest="plugindir",
                       action="store", default=None,
-                      help="Optional directory containing litscript plugin files.")
+                      help="Optional directory containing litscript plugin"
+                        " files.")
+    parser.add_argument("-o", "--output", dest="output", default=None,
+                      help="Specify the output file.")
     parser.add_argument("-c", "--config", dest="configfile", default=None,
                       help="Specify the litscript config file.")
-    parser.add_argument("-d", "--debug", action = "store_true", default=False,
+    parser.add_argument("-d", "--debug", action="store_true", default=False,
                       help="Run in debugging mode.")
-    parser.add_argument('source', type = FileType('r'), nargs='*',
+    parser.add_argument('source', type=FileType('rt'), nargs='*',
                       default=sys.stdin,
                       help='The to processing source file.')
 
-    if len(sys.argv) == 1:
-        parser.print_help()
+    return parser
 
-    arguments = vars(parser.parse_args())
 
-    print(arguments)
+def main(argv=None):
+    """Litscript Main
+    can be either called from commandline, or in an interactive
+    python environment.
+
+    cmd_example::
+
+        litscript -w rst helloworld.lit
+
+    interactive_example::
+
+        from litscript import main
+        main.main(['-w rst','helloworld.lit']
+
+    """
+
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # not working as also accepting input from stream
+    #if len(argv) == 1:
+        #parser.print_help()
+        #return 1
+
+    try:
+        parser = make_parser()
+        cmd_arguments = parser.parse_args(argv)
+    except:
+        raise
+
+    config_arguments = parse_config(cmd_arguments.configfile)
+    #imported_plugins = import_plugins(cmd['plugindir'])
+    return cmd_arguments ,config_arguments
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
 
 # vim: set ts=4 sw=4 tw=79 :
