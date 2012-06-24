@@ -6,10 +6,6 @@ __all__ = ['read','default_args','pre_process','process','post_process',
            'print_args','write']
 
 
-class LitscriptException(Exception):
-    """Base class for exceptions in this module."""
-    pass
-
 
 def read(fileobject, chunk_start='%<<', chunk_end='%>>', opt_delim='='):
     """This function produces a generator, which is iterable.

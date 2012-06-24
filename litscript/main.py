@@ -3,8 +3,9 @@ import os
 import sys
 from argparse import ArgumentParser, FileType
 
-from .glue import worker
+#from .glue import worker
 from .__init__ import __version__
+from .utils import LitscriptException
 
 if sys.version_info[0] >= 3:
     from configparser import SafeConfigParser
@@ -46,52 +47,40 @@ def import_plugins(plugindirs=[]):
     return plugin_modules
 
 
-def parse_config(config_file=None):
-    """ Parse Configfiles
+def read_config(conf_file):
+    config_parser = SafeConfigParser()
+    abspath = os.path.abspath(conf_file)
+    if os.path.exists(abspath):
+        config_parser.read([abspath])
+        return config_parser
+    else:
+        print('The given path: %s does not exist'%abspath)
+        return
 
-    Parses standard configuration files, like `.ini` files.
-
-    Default parsed files are:
-
-        $XDG_CONFIG_HOME/litscript/config
-        ~/.litscript.rc
-
-    Optionally there can be given the path of another file.
-
-    The order of the parsed files is like:
-
-    1. if it exists the optinal given file
-    2. $XDG_CONFIG_HOME/litscript/config
-    3. ~/.litscript.rc
-
-    Where the first has higher precedence then the others if there is the same
-    key.
-
-    """
-    configfiles = [
-        os.path.join(os.environ.get('XDG_CONFIG_HOME',
-                                    os.path.expanduser('~/.config')),
-                     'litscript', 'config'),
-    ]
-    if config_file:
-        expanded_path = os.path.expanduser(config_file)
-        if not os.path.exists(expanded_path):
-            sys.exit('File \'%s\' does not exist, check your argument for the'
-                    ' CONFIGFILE!' % expanded_path)
-        configfiles.insert(0, expanded_path)
-
-    cparser = SafeConfigParser()
-    parsed_files = cparser.read(reversed(configfiles))
-
-    settings = cparser._sections
-    settings['parsed_configfiles'] = parsed_files
-
-    return settings
+def make_pre_parser():
+    conf_parser = ArgumentParser(
+    # Turn off help, so we print all options in response to -h
+        add_help=False
+        )
+    conf_parser.add_argument("-c", "--conf_file", dest="conf_file",
+                             help="Specify config file", metavar="FILE")
+    return conf_parser
 
 
-def make_parser():
-    parser = ArgumentParser(usage="litscript [options] sourcefile",
-            version="litscript " + __version__)
+def make_parser(pre_parser):
+    parser = ArgumentParser(
+    # Inherit options from config_parser
+    parents=[pre_parser],
+    # simple usage message
+    usage="litscript [options] sourcefile",
+    # version
+    version="litscript " + __version__
+    # Don't mess with format of description
+    #formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    #parser = ArgumentParser(usage="litscript [options] sourcefile",
+            #version="litscript " + __version__)
 
     parser.add_argument("-w", "--weave", dest="weave",
                       action="store", default='.rst',
@@ -120,8 +109,6 @@ def make_parser():
                         " files.")
     parser.add_argument("-o", "--output", dest="output", default=None,
                       help="Specify the output file.")
-    parser.add_argument("-c", "--config", dest="configfile", default=None,
-                      help="Specify the litscript config file.")
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                       help="Run in debugging mode.")
     parser.add_argument('source', type=FileType('rt'), nargs='*',
@@ -155,15 +142,29 @@ def main(argv=None):
         #parser.print_help()
         #return 1
 
-    try:
-        parser = make_parser()
-        cmd_arguments = parser.parse_args(argv)
-    except:
-        raise
+    # read configfile args
+    pre_parser = make_pre_parser()
+    hard_defaults = {"conf_file":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
+                                              "litscript","config"
+                                             )
+                    }
+    pre_parser.set_defaults(**hard_defaults)
+    args, remaining_argv = pre_parser.parse_known_args(argv)
+    # read configfile
+    config_parser = read_config(args.conf_file)
+    if config_parser.has_section('default'):
+        soft_defaults = dict(config_parser.items("default"))
+    else:
+        soft_defaults = {}
 
-    config_arguments = parse_config(cmd_arguments.configfile)
-    #imported_plugins = import_plugins(cmd['plugindir'])
-    return cmd_arguments ,config_arguments
+    # true parser
+    parser = make_parser(pre_parser)
+    # set the defaults
+    parser.set_defaults(**soft_defaults)
+    # parse remaining args
+    args = parser.parse_args(remaining_argv)
+
+    return args
 
 if __name__ == '__main__':
     sys.exit(main())

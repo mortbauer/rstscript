@@ -1,6 +1,10 @@
 import signal
 
 
+class LitscriptException(Exception):
+    """Base class for exceptions in this module."""
+    pass
+
 class TimeoutException(Exception):
     pass
 

@@ -1,6 +1,21 @@
 from .chunks import *
 from .processors import *
 import logging
+class Litscript(object):
+    version = __version__
+
+    def __init__(self,cmd_settings):
+        self.cmd = cmd_settings
+        self.config = _config_parse(self.cmd['configfile'])
+        self.loaded_plugins = _load_plugins(self.cmd['plugindir'])
+
+    def _process(self,raw):
+        self.document = Document(raw,self.processors)
+
+    def mainl(self):
+        for sourcefile in self.cmd['source']:
+            self._process(sourcefile.read())
+
 
 def worker(infilen,outfilen,settings={},log='console',
            logfile='lit.log',level='ERROR'):
