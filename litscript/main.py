@@ -3,7 +3,7 @@ import os
 import sys
 from argparse import ArgumentParser, FileType
 
-#from .glue import worker
+from .glue import Litscript
 from .__init__ import __version__
 from .utils import LitscriptException
 
@@ -13,9 +13,11 @@ else:
     from ConfigParser import SafeConfigParser
 
 
-def import_plugins(plugindirs=[]):
+def import_plugins(plugindirs):
     plugindir_paths = []
     # add the plugin-directory paths if they're not already in the path
+    if type(plugindirs) == str:
+        plugindirs = [plugindirs]
     for plugindir in plugindirs:
         plugindir_paths.insert(0, os.path.abspath(plugindir))
     # list all files in plugindirs and add the plugindir_paths to the current
@@ -54,8 +56,9 @@ def read_config(conf_file):
         config_parser.read([abspath])
         return config_parser
     else:
-        print('The given path: %s does not exist'%abspath)
+        print('The given path: %s does not exist' % abspath)
         return
+
 
 def make_pre_parser():
     conf_parser = ArgumentParser(
@@ -75,19 +78,14 @@ def make_parser(pre_parser):
     usage="litscript [options] sourcefile",
     # version
     version="litscript " + __version__
-    # Don't mess with format of description
-    #formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    #parser = ArgumentParser(usage="litscript [options] sourcefile",
-            #version="litscript " + __version__)
-
     parser.add_argument("-w", "--weave", dest="weave",
-                      action="store", default='.rst',
+                      action="store", default=None,
                       help="Should the document be weaved? If yes, provide the"
                       " extension of the weaved output document.")
     parser.add_argument("-t", "--tangl", dest="tangle",
-                      action="store", default='.py',
+                      action="store", default=None,
                       help="Should the document be tangeld? If yes provide the"
                       " ending of the tangeld output document.")
     parser.add_argument("-f", "--format", dest="format",
@@ -104,11 +102,15 @@ def make_parser(pre_parser):
                         "'png' for rst and Sphinx html documents and 'pdf' "
                         "for tex")
     parser.add_argument("-p", "--plugin-directory", dest="plugindir",
-                      action="store", default=None,
+                      action="store", default=[],
                       help="Optional directory containing litscript plugin"
                         " files.")
-    parser.add_argument("-o", "--output", dest="output", default=None,
-                      help="Specify the output file.")
+    parser.add_argument("-ow", "--output-weave", dest="woutput", default=None,
+                      help="Specify the output file for the weaved content.")
+    parser.add_argument("-ot", "--output-tangle", dest="toutput", default=None,
+                      help="Specify the output file for the tangled content.")
+    parser.add_argument("--force", action="store_true", default=False,
+                      help="Overwrite existing files without asking.")
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                       help="Run in debugging mode.")
     parser.add_argument('source', type=FileType('rt'), nargs='*',
@@ -116,6 +118,19 @@ def make_parser(pre_parser):
                       help='The to processing source file.')
 
     return parser
+
+
+
+def test_iffile(filelist):
+    for x in filelist:
+        if os.path.isfile(x):
+            ans = input('The following file: %s already exists,'
+                        ' do you really wanna overwrite it?\n[yes/no]' % x)
+            while ans != 'yes' and ans != 'no':
+                ans = input("[yes/no]")
+            if ans == 'no':
+                return 'break'
+    return 'continue'
 
 
 def main(argv=None):
@@ -137,12 +152,7 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
 
-    # not working as also accepting input from stream
-    #if len(argv) == 1:
-        #parser.print_help()
-        #return 1
-
-    # read configfile args
+    # read configfile argument
     pre_parser = make_pre_parser()
     hard_defaults = {"conf_file":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
                                               "litscript","config"
@@ -157,14 +167,36 @@ def main(argv=None):
     else:
         soft_defaults = {}
 
-    # true parser
+    # parse the rest
     parser = make_parser(pre_parser)
     # set the defaults
     parser.set_defaults(**soft_defaults)
     # parse remaining args
     args = parser.parse_args(remaining_argv)
 
-    return args
+    # import plugins
+    plugin_moduls = import_plugins(args.plugindir)
+
+    # define output filenames
+    if args.weave != None and args.woutput == None:
+        ext = '.' + args.weave.strip()
+        args.woutput = [os.path.splitext(x.name)[0] + ext for x in args.source]
+
+    if args.tangle != None and args.toutput == None:
+        ext = '.' + args.tangle.strip()
+        args.toutput = [os.path.splitext(x.name)[0] + ext for x in args.source]
+
+    # test output filenames
+    if args.force != True:
+        if args.weave != None:
+            if test_iffile(args.woutput) == 'break':
+                return 1
+        if args.tangle != None:
+            if test_iffile(args.toutput) == 'break':
+                return 1
+
+    L = Litscript(args,plugin_moduls)
+    return L
 
 if __name__ == '__main__':
     sys.exit(main())

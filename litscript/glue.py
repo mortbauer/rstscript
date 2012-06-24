@@ -1,47 +1,46 @@
 from .chunks import *
 from .processors import *
+from .__init__ import __version__
+from .utils import LitscriptException
 import logging
+
+
+# create logger
+logging.basicConfig(format='%(levelname)s:%(message)s',level=logging.DEBUG)
+
+
 class Litscript(object):
     version = __version__
 
-    def __init__(self,cmd_settings):
-        self.cmd = cmd_settings
-        self.config = _config_parse(self.cmd['configfile'])
-        self.loaded_plugins = _load_plugins(self.cmd['plugindir'])
+    def __init__(self,args,loaded_modules):
+        self._args = args
+        self._loaded_modules = loaded_modules
+        self._register()
 
-    def _process(self,raw):
-        self.document = Document(raw,self.processors)
+    def _register(self):
+        plugins = Pre.__subclasses__()
+        plugins.extend(Proc.__subclasses__())
+        plugins.extend(Post.__subclasses__())
+        for x in plugins:
+            x.register()
+        self._plugins = plugins
+        self._pre_plugins = Pre.plugins
+        self._proc_plugins = Proc.plugins
+        self._post_plugins = Post.plugins
 
-    def mainl(self):
-        for sourcefile in self.cmd['source']:
-            self._process(sourcefile.read())
+    def _work(self,infile,outfile,level):
+        try:
+            chain = read(infile)
+            chain = default_args(chain)
+            chain = process(chain,self._proc_plugins)
+            chain = post_process(chain)
+            if level != 'ERROR':
+                chain = print_args(chain)
+            write(chain,outfile)
+        except Exception as e:
+            raise e
 
-
-def worker(infilen,outfilen,settings={},log='console',
-           logfile='lit.log',level='ERROR'):
-    # register all imported plugins
-    plugs = Pre.__subclasses__()
-    plugs.extend(Proc.__subclasses__())
-    plugs.extend(Post.__subclasses__())
-    for x in plugs:
-        x.register()
-
-    # create logger
-    logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
-
-    # do conversion
-    try:
-        infi = open(infilen,'rt')
-        outfi = open(outfilen,'wt')
-        chain = read(infi)
-        chain = default_args(chain)
-        chain = process(chain,Proc.plugins)
-        chain = post_process(chain)
-        if level != 'ERROR':
-            chain = print_args(chain)
-        write(chain,outfi)
-    except Exception as e:
-        raise e
-    finally:
-        infi.close()
-        outfi.close()
+    def main(self):
+        for inp,outpn in zip(self._args.source,self._args.woutput):
+            with open(outpn,'wt') as outp:
+                self._work(inp,outp,level='ERROR')
