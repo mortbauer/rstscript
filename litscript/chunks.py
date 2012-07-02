@@ -2,89 +2,102 @@ from io import StringIO
 import re
 import logging
 
-__all__ = ['read','default_args','pre_process','process','post_process',
+__all__ = ['read','pre_process','process','post_process',
            'print_args','write']
 
 
-
-def read(fileobject, chunk_start='%<<', chunk_end='%>>', opt_delim='='):
-    """This function produces a generator, which is iterable.
-    The pieces it produces from a readable file have to be delimited
-    by a three character long token at the beginning of a line.
-    It only chenks for the delimiters at the begining of each iterated piece.
+def read(fileobject, key='%', start='<<', end='>>', opt_delim='=',
+         pre_def={'proc':'py'},post_def={}):
+    """This function returns a generator
+    It produces pieces from a fileobject, delimited with *chunk_start* and
+    *chunk_end* tokens.
     """
 
+    #: holder of real content
     content = StringIO()
+    #: counter for trvial error checking
     delimtercounter = 0
-    chunkcounter = 0
-    re_str = '([a-zA-Z_\-0-9]*)\s*{}\s*([a-zA-Z_\-0-9]*)'
-    get_opts = re.compile(re_str.format(opt_delim))
-    esc_chunk_start = '%{}'.format(chunk_start)
-    esc_chunk_end = '%{}'.format(chunk_end)
-    content = StringIO()
+    #: informational counter
+    chunkn = 0
+    #: line number of chunk start
+    linecounter = 1
+    linechunk = linecounter
+    #: allowed option characters
+    opt_str = '([a-zA-Z_\-0-9]*)\s*{}\s*([a-zA-Z_\-0-9]*)'
+    get_opts = re.compile(opt_str.format(opt_delim))
+    #: delimiter, and escaped delimiters
+    chunk_start = '{}{}'.format(key,start)
+    chunk_end = '{}{}'.format(key,end)
+    esc_chunk_start = '{}{}'.format(key,chunk_start)
+    esc_chunk_end = '{}{}'.format(key,chunk_end)
 
-    if len(chunk_start) != len(chunk_end):
-        raise ValueError("Length of the start and end tokens must be equal.")
+    if len(start) != len(end):
+        raise ValueError("Length of the start and end tokens must be equal!")
+    elif key == start or key == end or start == end:
+        raise ValueError("start,end and key delimiters must be distinguished!")
     else:
         token_length = len(chunk_start)
 
-    linecounter = 1
-    linechunk = 0
+    def buildchunk(t,pre,post,n,l,c):
+        c.truncate()
+        d = {'type':t,
+            'pre_args':pre,
+            'post_args':post,
+            'number':n,
+            'line':l,
+            'content':c
+            }
+        content.seek(0)
+        return d
+
+    def get_pre_param(line):
+        args = dict(get_opts.findall(line))
+        for arg in pre_def:
+            args.setdefault(arg,pre_def[arg])
+        return args
+
+    def get_post_param(line):
+        args = dict(get_opts.findall(line))
+        for arg in post_def:
+            args.setdefault(arg,post_def[arg])
+        return args
+
     for line in fileobject:
         line_start = line[:token_length]
-        line_startm = line[:token_length + 1]
+        line_startm = line[:(token_length + len(key))]
 
-        # start of chunk
+        # on start of chunk delimiter yield text
         if line_start == chunk_start:
-            content.truncate()
-            pre_args = dict(get_opts.findall(line[token_length:]))
-            yield {'type':'text','content_in':content,'number':chunkcounter,
-                   'start':linechunk}
-            content.seek(0)
+            if content.tell() != 0:
+                c = buildchunk('text',None,None,chunkn,linechunk,content)
+                yield c
+            pre_a = get_pre_param(line[token_length:])
             delimtercounter += 1
-            chunkcounter += 1
             linechunk = linecounter
-        # end of chunk
+        # on end of chunk delimiter yield code
         elif line_start == chunk_end:
-            content.truncate()
-            post_args = dict(get_opts.findall(line[token_length:]))
-            yield {'type':'code', 'content_in':content,
-                   'pre_args':pre_args, 'post_args':post_args,
-                   'number':chunkcounter,'start':linechunk}
-            content.seek(0)
+            if content.tell() != 0:
+                post_a = get_post_param(line[token_length:])
+                c = buildchunk('code',pre_a,post_a,chunkn,linechunk,content)
+                yield c
             delimtercounter -= 1
-            chunkcounter += 1
-            linechunk = linecounter
         # escaped
         elif (line_startm == esc_chunk_start or line_startm == esc_chunk_end):
-            content.write(line[1:])
+            content.write(line[len(key):])
         # normal
         else:
             content.write(line)
 
         if delimtercounter > 1 or delimtercounter < 0:
-            msg = 'line: {}: You may have forgotten a delimiter.'\
-                    .format(linecounter)
-            logging.error(msg)
-            break
+            msg = 'missing delimiter before line {}'
+            raise GeneratorExit(msg.format(linecounter))
 
         linecounter += 1
 
     content.truncate()
-    yield {'type':'text','content_in':content,'number':chunkcounter,
-            'start':linechunk}
-
-
-def default_args(fileobject,pre_def={'proc':'py'},post_def={}):
-    for chunk in fileobject:
-        if chunk['type'] == 'text':
-            yield chunk
-        else:
-            for x in pre_def:
-                chunk['pre_args'].setdefault(x,pre_def[x])
-            for x in post_def:
-                chunk['post_args'].setdefault(x,post_def[x])
-            yield chunk
+    if content.tell() != 0:
+        c = buildchunk('text',None,None,chunkn,linechunk,content)
+        yield c
 
 
 def pre_process(fileobject):
