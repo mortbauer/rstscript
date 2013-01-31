@@ -77,7 +77,6 @@ def make_parser(pre_parser):
     # simple usage message
     usage="litscript [options] sourcefile",
     # version
-    version="litscript " + __version__
     )
 
     parser.add_argument("-w", "--weave", dest="weave",
@@ -92,8 +91,8 @@ def make_parser(pre_parser):
                       action="store", default="rst",
                       help="The output format: 'rst' only "
                         "one available so far.")
-    parser.add_argument("--figure-directory", dest="figdir",
-                      action="store", default='figures',
+    parser.add_argument("--figure-directory", dest='figdir',
+                      action="store", default='_figures',
                       help="Directory path for matplolib graphics:"
                         " Default 'figures'")
     parser.add_argument("-g","--figure-format", dest="figfmt",
@@ -105,32 +104,21 @@ def make_parser(pre_parser):
                       action="store", default=[],
                       help="Optional directory containing litscript plugin"
                         " files.")
-    parser.add_argument("-ow", "--output-weave", dest="woutput", default=None,
+    parser.add_argument("-ow", "--output-weave", dest="woutput",
+                        default=None,
                       help="Specify the output file for the weaved content.")
-    parser.add_argument("-ot", "--output-tangle", dest="toutput", default=None,
+    parser.add_argument("-ot", "--output-tangle", dest="toutput", nargs=1,
+                        default=None,
                       help="Specify the output file for the tangled content.")
     parser.add_argument("--force", action="store_true", default=False,
                       help="Overwrite existing files without asking.")
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                       help="Run in debugging mode.")
     parser.add_argument('source', type=FileType('rt'), nargs='*',
-                      default=sys.stdin,
+                      default=[sys.stdin],
                       help='The to processing source file.')
-
+    parser.add_argument('--version', action='version', version=__version__)
     return parser
-
-
-
-def test_iffile(filelist):
-    for x in filelist:
-        if os.path.isfile(x):
-            ans = input('The following file: %s already exists,'
-                        ' do you really wanna overwrite it?\n[yes/no]' % x)
-            while ans != 'yes' and ans != 'no':
-                ans = input("[yes/no]")
-            if ans == 'no':
-                return 'break'
-    return 'continue'
 
 
 def main(argv=None):
@@ -173,32 +161,32 @@ def main(argv=None):
     parser.set_defaults(**soft_defaults)
     # parse remaining args
     args = parser.parse_args(remaining_argv)
+    # default figdir, create also
+    if args.woutput and not os.path.isabs(args.figdir):
+        outputdir = os.path.split(args.woutput)[0]
+        args.figdir = os.path.join(os.path.abspath(outputdir),args.figdir)
+    if args.woutput and not os.path.exists(args.figdir):
+        os.mkdir(args.figdir)
 
     # import plugins
-    plugin_moduls = import_plugins(args.plugindir)
+    args = vars(args)
+    plugin_moduls = import_plugins(args['plugindir'])
 
     # define output filenames
-    if args.weave != None and args.woutput == None:
-        ext = '.' + args.weave.strip()
-        args.woutput = [os.path.splitext(x.name)[0] + ext for x in args.source]
+    if args['weave'] != None and args['woutput'] == None:
+        ext = '.' + args['weave'].strip()
+        args['woutput'] = [os.path.splitext(x.name)[0] + ext for x in args['source']]
 
-    if args.tangle != None and args.toutput == None:
-        ext = '.' + args.tangle.strip()
-        args.toutput = [os.path.splitext(x.name)[0] + ext for x in args.source]
-
-    # test output filenames
-    if args.force != True:
-        if args.weave != None:
-            if test_iffile(args.woutput) == 'break':
-                return 1
-        if args.tangle != None:
-            if test_iffile(args.toutput) == 'break':
-                return 1
+    if args['tangle'] != None and args['toutput'] == None:
+        ext = '.' + args['tangle'].strip()
+        args['toutput'] = [os.path.splitext(x.name)[0] + ext for x in args['source']]
 
     L = Litscript(args,plugin_moduls)
+    L.main()
     return L
 
 if __name__ == '__main__':
-    sys.exit(main())
+    #sys.exit(main())
+    main()
 
 # vim: set ts=4 sw=4 tw=79 :
