@@ -18,7 +18,8 @@ setup(name='litscript',
       package_data={'litscript':['defaults/litscript.rc.spec']},
       requires=[
           'argparse (>=0.9)',
-          'subprocess (>=2.7)'],
+          'subprocess (>=2.7)'
+          'colorama'],
       provides='litscript',
       classifiers=[
         'Development Status :: Alpha',
