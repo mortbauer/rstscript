@@ -6,6 +6,13 @@ http://stackoverflow.com/questions/1165352/fast-comparison-between-two-python-di
 """
 
 
+def equal(new,old):
+    if str(type(new)) == 'numpy.ndarray' and str(type(old)) == 'numpy.ndarray':
+        return (new == old).all()
+    else:
+        print(type(new),type(old))
+        return new == old
+
 class DictDiffer(object):
     """
 Calculate the difference between two dictionaries as:
@@ -31,9 +38,9 @@ Calculate the difference between two dictionaries as:
         changes = []
         for o in self.intersect:
             try:
-                if self.past_dict[o] != self.current_dict[o]:
+                if equal(self.past_dict[o],self.current_dict[o]):
                     changes.append(o)
-            execpt Exception as e:
+            except Exception as e:
                 raise e
 
         return set(changes)

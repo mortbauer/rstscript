@@ -13,13 +13,13 @@ setup(name='litscript',
       author=litscript.__author__,
       author_email=litscript.__author_email__,
       url=litscript.__url__,
+      download_url=litscript.__url__,
       license=litscript.__copyright__,
       packages=['litscript'],
       package_data={'litscript':['defaults/litscript.rc.spec']},
-      requires=[
-          'argparse (>=0.9)',
-          'subprocess (>=2.7)'
-          'colorama'],
+      #install_requires=[
+          #'argparse >=0.9',
+          #'colorama'],
       provides='litscript',
       classifiers=[
         'Development Status :: Alpha',

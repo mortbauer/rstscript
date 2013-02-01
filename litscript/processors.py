@@ -3,7 +3,7 @@ import os
 import abc
 import traceback
 from io import StringIO
-from dictdiffer import dictdiffer
+from . import dictdiffer
 from .colorlog import getlogger
 
 __all__ = ['Pre','Proc','Post','Pre_Nothing','Proc_Python','Post_Nothing']
