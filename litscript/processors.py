@@ -17,7 +17,6 @@ class classproperty(object):
      def __get__(self, instance, owner):
          return self.getter(owner)
 
-
 class PluginBase(metaclass=abc.ABCMeta):
     @classmethod
     def register(self):
@@ -29,9 +28,9 @@ class PluginBase(metaclass=abc.ABCMeta):
     def process(self):
         pass
 
-
 class Pre(PluginBase):
     plugins = {}
+
 
 class Proc(PluginBase):
     plugins = {}

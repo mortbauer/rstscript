@@ -1,10 +1,14 @@
 from io import StringIO
 import re
+import argparse
 from .colorlog import getlogger
 
 __all__ = ['read','pre_process','process','post_process', 'write']
 
 logger = getlogger('litscript.chunks')
+
+chunk_preparser = argparse.ArgumentParser()
+chunk_preparser.add_argument('echo',action='store_true',help='echoes the commands')
 
 def read(fileobject, key='%', start='<<', end='>>', opt_delim='=',
         pre_def={'fig':False,'proc':'py','pre':'nothing'},post_def={'post':'python'}):

@@ -8,5 +8,3 @@ __author_email__ = "mortbauer@gmail.com"
 __description__ = "Scientific reports with embedded python computations with reST, LaTeX or markdown"
 __url__ = "https://github.com/mortbauer/litscript"
 __license__ = "Licensed under the GNU GPL v3+."
-
-

@@ -1,7 +1,7 @@
 import re
 import os
 import sys
-from argparse import ArgumentParser, FileType
+import argparse
 
 from .glue import Litscript
 from .__init__ import __version__
@@ -12,6 +12,17 @@ if sys.version_info[0] >= 3:
 else:
     from ConfigParser import SafeConfigParser
 
+class HelpParser(argparse.ArgumentParser):
+    """ creates a modified parser
+    which will print the help message if
+    an error occurs
+
+    Note: from Stackoverflow answer http://stackoverflow.com/a/4042861/1607448
+    """
+    def error(self, message):
+        sys.stderr.write('error: %s\n' % message)
+        self.print_help()
+        sys.exit(2)
 
 def import_plugins(plugindirs):
     plugindir_paths = []
@@ -61,7 +72,7 @@ def read_config(conf_file):
 
 
 def make_pre_parser():
-    conf_parser = ArgumentParser(
+    conf_parser = HelpParser(
     # Turn off help, so we print all options in response to -h
         add_help=False
         )
@@ -71,7 +82,7 @@ def make_pre_parser():
 
 
 def make_parser(pre_parser):
-    parser = ArgumentParser(
+    parser = HelpParser(
     # Inherit options from config_parser
     parents=[pre_parser],
     # simple usage message
@@ -114,7 +125,7 @@ def make_parser(pre_parser):
                       help="Overwrite existing files without asking.")
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                       help="Run in debugging mode.")
-    parser.add_argument('source', type=FileType('rt'), nargs='*',
+    parser.add_argument('source', type=argparse.FileType('rt'), nargs='+',
                       default=[sys.stdin],
                       help='The to processing source file.')
     parser.add_argument('--version', action='version', version=__version__)
