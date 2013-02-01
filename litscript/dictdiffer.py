@@ -5,13 +5,8 @@ Originally posted as:
 http://stackoverflow.com/questions/1165352/fast-comparison-between-two-python-dictionary/1165552#1165552
 """
 
-
 def equal(new,old):
-    if str(type(new)) == 'numpy.ndarray' and str(type(old)) == 'numpy.ndarray':
-        return (new == old).all()
-    else:
-        print(type(new),type(old))
-        return new == old
+    return new is old
 
 class DictDiffer(object):
     """

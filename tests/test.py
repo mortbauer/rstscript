@@ -7,10 +7,10 @@ class LitTester(unittest.TestCase):
 
     def test_dictdiffer(self):
         a = numpy.array([1,2,3,4])
-        dnew = {'a',a}
-        dold = {'a',a}
+        dnew = {'a':a}
+        dold = {'a':a}
         diff = dictdiffer.DictDiffer(dnew,dold)
-        diff.changed()
+        self.assertTrue(diff.changed())
 
     #def test_basic(self):
         #L = glue.Litscript({'source':open('testfile.nw','r'),'woutput':'test.rst'},{})

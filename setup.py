@@ -17,9 +17,9 @@ setup(name='litscript',
       license=litscript.__copyright__,
       packages=['litscript'],
       package_data={'litscript':['defaults/litscript.rc.spec']},
-      #install_requires=[
-          #'argparse >=0.9',
-          #'colorama'],
+      install_requires=[
+          'argparse >=0.9',
+          'colorama'],
       provides='litscript',
       classifiers=[
         'Development Status :: Alpha',
