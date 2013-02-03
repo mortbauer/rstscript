@@ -6,6 +6,7 @@ import collections
 import shlex
 from .colorlog import getlogger
 from . import process
+from . import hunks
 
 __all__ = ['read','pre_process','process','post_process', 'write']
 
@@ -15,16 +16,54 @@ def make_preparser():
     return preparser,processor
 
 
+def optionparser(optionstring,default_subcommand=''):
+    """ parses a string containing options into a dict
+    Reference: http://stackoverflow.com/a/12013711/1607448
+    """
+    args = shlex.split(optionstring)
+    options = {}
+    if not args[0].startswith('-'):
+        options['command'] = args[0]
+        args = args[1:]
+    else:
+        options['command'] = default_subcommand
+
+    skip = False
+    for x,y in zip(args, args[1:]+["--"]):
+        if skip:
+            skip = False
+            continue
+        else:
+            if y.startswith('-') and x.startswith('-'):
+                options[x] = True
+                skip = False
+            elif x.startswith('-'):
+                options[x] = y
+                skip = True
+            else:
+                skip = False
+                logger.error('invalid options {0}'.format(optionstring))
+    return options
+
+def testoptions(options,knownoptions):
+    for opt in options:
+        if not opt in knownoptions:
+            logger.error('option "{0}" is unhandled'.format(opt))
+
 class Litrunner(object):
     def __init__(self):
         self.processorClasses = {}
         self.processors = {}
+        self.formatters = {}
         # setup chunk pre parser
         self.preparser = argparse.ArgumentParser()
         self.pre_subparser = self.preparser.add_subparsers(dest='processor')
+        self.preparser.set_defaults(processor='python')
         self.preparser.add_argument('-e','--echo',action='store_true',help='echoes the commands')
         # setup chunk post parser
         self.postparser = argparse.ArgumentParser()
+        self.postparser.set_defaults(formatter='compact')
+        self.post_subparser = self.postparser.add_subparsers(dest='formatters')
         #self.subparserformatter = self.postparser.add_subparsers(dest='formatter')
         self.postparser.add_argument('-l','--label',help='label of the chunk')
 
@@ -37,7 +76,15 @@ class Litrunner(object):
             self.pre_subparser.choices[ProcessorClass.name] = ProcessorClass.parser
             self.processorClasses[ProcessorClass.name] = ProcessorClass
         else:
-            logger.error('processor "{0}" already known'.format(name))
+            logger.error('processor "{0}" already known'.format(ProcessorClass.name))
+
+    def register_formatter(self,FormatterClass):
+        # maybe a bit unusual, but seems to work
+        if not FormatterClass.name in self.post_subparser.choices:
+            self.post_subparser.choices[FormatterClass.name] = FormatterClass.parser
+            self.formatters[FormatterClass.name] = FormatterClass()
+        else:
+            logger.error('processor "{0}" already known'.format(FormatterClass.name))
 
     def read(self,fileobject):
         """This function returns a generator
@@ -110,35 +157,25 @@ class Litrunner(object):
         if content.tell() != 0:
             yield buildchunk(chunkn,linechunk,'text',None,None,content)
 
+
     def weave(self,chunks):
         for chunk in chunks:
             if chunk.type == 'code':
                 if not chunk.pre_args.processor in self.processors:
                     self.init_processor(chunk.pre_args.processor)
                 processor = self.processors[chunk.pre_args.processor]
-                for node in processor.process(chunk):
-                    yield node
+                for cchunk in processor.process(chunk):
+                    yield cchunk
             elif chunk.type == 'text':
-                yield chunk.raw
+                yield hunks.CChunk(chunk,chunk.raw,None,None,None,None,None)
             else:
                 logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
 
-    def tangle(self,chunk):
-        if chunk.type == 'code':
-            return chunk.raw
-        elif chunk.type == 'text':
-            pass
-        else:
-            logger.error('unsupported chunk type {0}'.
-                    format(chunk.type))
-
-    def process(self,chunk,outweave=None,outtangle=None):
-        if outweave:
-            outweave.append(weave(chunk))
-        if outtangle:
-            outtangle.append(tangle(chunk))
-
+    def format(self,cchunks):
+        for cchunk in cchunks:
+            formatter = self.formatters[cchunk.chunk.post_args.formatter]
+            yield from formatter.format(cchunk)
 
 def post_process(fileobject,procs_avail):
     proc_name = ''
