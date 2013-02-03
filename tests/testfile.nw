@@ -1,10 +1,10 @@
 Hallo Martin 
 Hallo Susi
-%<<executer=python
+%<<python
 
 print('pfiate')
 a='hhhhhhhh'
 p = w
 
-%>>label=greeting
+%>>-lgreeting
 Hallo Martin

@@ -1,163 +1,143 @@
 from io import StringIO
 import re
+import pdb
 import argparse
+import collections
+import shlex
 from .colorlog import getlogger
+from . import process
 
 __all__ = ['read','pre_process','process','post_process', 'write']
 
 logger = getlogger('litscript.chunks')
 
-chunk_preparser = argparse.ArgumentParser()
-chunk_preparser.add_argument('echo',action='store_true',help='echoes the commands')
+def make_preparser():
+    return preparser,processor
 
-def read(fileobject, key='%', start='<<', end='>>', opt_delim='=',
-        pre_def={'fig':False,'proc':'py','pre':'nothing'},post_def={'post':'python'}):
-    """This function returns a generator
-    It produces pieces from a fileobject, delimited with *chunk_start* and
-    *chunk_end* tokens.
-    """
 
-    #: holder of real content
-    content = StringIO()
-    #: counter for trvial error checking
-    delimtercounter = 0
-    #: informational counter
-    chunkn = 0
-    #: line number of chunk start
-    linecounter = 1
-    linechunk = linecounter
-    #: allowed option characters
-    opt_str = '([a-zA-Z_\-0-9]*)\s*{}\s*([a-zA-Z_\-0-9]*)'
-    get_opts = re.compile(opt_str.format(opt_delim))
-    #: delimiter, and escaped delimiters
-    chunk_start = '{}{}'.format(key,start)
-    chunk_end = '{}{}'.format(key,end)
-    esc_chunk_start = '{}{}'.format(key,chunk_start)
-    esc_chunk_end = '{}{}'.format(key,chunk_end)
+class Litrunner(object):
+    def __init__(self):
+        self.processorClasses = {}
+        self.processors = {}
+        # setup chunk pre parser
+        self.preparser = argparse.ArgumentParser()
+        self.pre_subparser = self.preparser.add_subparsers(dest='processor')
+        self.preparser.add_argument('-e','--echo',action='store_true',help='echoes the commands')
+        # setup chunk post parser
+        self.postparser = argparse.ArgumentParser()
+        #self.subparserformatter = self.postparser.add_subparsers(dest='formatter')
+        self.postparser.add_argument('-l','--label',help='label of the chunk')
 
-    if len(start) != len(end):
-        raise ValueError("Length of the start and end tokens must be equal!")
-    elif key == start or key == end or start == end:
-        raise ValueError("start,end and key delimiters must be distinguished!")
-    else:
-        token_length = len(chunk_start)
+    def init_processor(self,name):
+        self.processors[name] = self.processorClasses[name]()
 
-    def buildchunk(t,pre,post,n,l,c):
-        c.truncate()
-        d = {'type':t,
-            'pre_args':pre,
-            'post_args':post,
-            'number':n,
-            'line':l,
-            'content_raw':c
-            }
-        c.seek(0)
-        logger.info('reading chunk: type:{t} pre:{pre} post:{post}'.format(t=t,pre=pre,post=post))
-        return d,StringIO()
-
-    def get_pre_param(line):
-        args = dict(get_opts.findall(line))
-        for arg in pre_def:
-            args.setdefault(arg,pre_def[arg])
-        return args
-
-    def get_post_param(line):
-        args = dict(get_opts.findall(line))
-        for arg in post_def:
-            args.setdefault(arg,post_def[arg])
-        return args
-
-    for line in fileobject:
-        #logger.info('new line {0}'.format(line))
-        line_start = line[:token_length]
-        line_startm = line[:(token_length + len(key))]
-
-        # on start of chunk delimiter yield text
-        if line_start == chunk_start:
-            if content.tell() != 0:
-                c,content = buildchunk('text',None,{'post':'python'},chunkn,linechunk,content)
-                yield c
-            pre_a = get_pre_param(line[token_length:])
-            delimtercounter += 1
-            linechunk = linecounter
-        # on end of chunk delimiter yield code
-        elif line_start == chunk_end:
-            if content.tell() != 0:
-                post_a = get_post_param(line[token_length:])
-                c,content = buildchunk('code',pre_a,post_a,chunkn,linechunk,content)
-                yield c
-            delimtercounter -= 1
-        # escaped
-        elif (line_startm == esc_chunk_start or line_startm == esc_chunk_end):
-            content.write(line[len(key):])
-        # normal
+    def register_processor(self,ProcessorClass):
+        # maybe a bit unusual, but seems to work
+        if not ProcessorClass.name in self.pre_subparser.choices:
+            self.pre_subparser.choices[ProcessorClass.name] = ProcessorClass.parser
+            self.processorClasses[ProcessorClass.name] = ProcessorClass
         else:
-            content.write(line)
+            logger.error('processor "{0}" already known'.format(name))
 
-        if delimtercounter > 1 or delimtercounter < 0:
-            msg = 'missing delimiter before line {}'
-            raise GeneratorExit(msg.format(linecounter))
+    def read(self,fileobject):
+        """This function returns a generator
+        It produces pieces from a fileobject, delimited with *chunk_start* and
+        *chunk_end* tokens.
+        """
 
-        linecounter += 1
+        #: holder of real content
+        content = StringIO()
+        #: counter for trvial error checking
+        delimtercounter = 0
+        #: informational counter
+        chunkn = 0
+        #: line number of chunk start
+        linecounter = 1
+        linechunk = linecounter
+        #: delimiter, and escaped delimiters
+        chunk_start = '%<<'
+        chunk_end = '%>>'
+        token_length = 3
 
-    content.truncate()
-    if content.tell() != 0:
-        c,content = buildchunk('text',None,None,chunkn,linechunk,content)
-        yield c
+        # fast way to store the info
+        Chunk = collections.namedtuple('Chunk', ['number','lineNumber','type','pre_args','post_args','raw'])
 
-def pre_process(fileobject, procs_avail):
-    proc_name = ''
-    proc_ = None
-    procs_init = {}
-    for chunk in fileobject:
+        def buildchunk(number,linenumber,chunktype,pre,post,content):
+            content.truncate()
+            chunk = Chunk(number,linenumber,chunktype,pre,post,content.getvalue())
+            content.seek(0)
+            logger.info(chunk)
+            return chunk
 
-        if chunk['type'] != 'code':
-            yield chunk
-            continue
-        if chunk['pre_args']['pre'] != proc_name:
-            proc_name = chunk['pre_args']['pre']
-            if not proc_ in procs_init:
-                try:
-                    procs_init[proc_name] = procs_avail[proc_name]()
-                    proc_ = procs_init[proc_name].process
-                except KeyError as e:
-                    raise e
+        def get_pre_param(line):
+            """ get chunk pre arguments """
+            return self.preparser.parse_args(shlex.split(line))
+
+        def get_post_param(line):
+            """ get chunk post arguments """
+            return self.postparser.parse_args(shlex.split(line))
+
+        for line in fileobject:
+            line_start = line[:token_length]
+
+            # on start of chunk delimiter yield text
+            if line_start == chunk_start:
+                if content.tell() != 0:
+                    yield buildchunk(chunkn,linechunk,'text',None,None,content)
+                pre_a = get_pre_param(line[token_length:])
+                delimtercounter += 1
+                linechunk = linecounter
+                chunkn += 1
+            # on end of chunk delimiter yield code
+            elif line_start == chunk_end:
+                if content.tell() != 0:
+                    post_a = get_post_param(line[token_length:])
+                    yield buildchunk(chunkn,linechunk,'code',pre_a,post_a,content)
+                delimtercounter -= 1
+                linechunk = linecounter + 1
+                chunkn += 1
+            # normal
             else:
-                proc_ = procs_init[proc_name].process
+                content.write(line)
 
-        try:
-            chunk['content_in'] = proc_(chunk['content_raw'])
-        except Exception as e:
-            raise e
+            if delimtercounter > 1 or delimtercounter < 0:
+                msg = 'missing delimiter before line {}'
+                raise GeneratorExit(msg.format(linecounter))
 
-        yield chunk
+            linecounter += 1
 
+        content.truncate()
+        if content.tell() != 0:
+            yield buildchunk(chunkn,linechunk,'text',None,None,content)
 
-def process(fileobject,procs_avail,args):
-    proc_name = ''
-    proc_ = None
-    procs_init = {}
-    for chunk in fileobject:
-        if chunk['type'] != 'code':
-            yield chunk
-            continue
-        if chunk['pre_args']['proc'] != proc_name:
-            proc_name = chunk['pre_args']['proc']
-            if not proc_ in procs_init:
-                try:
-                    procs_init[proc_name] = procs_avail[proc_name]()
-                    proc_ = procs_init[proc_name].process
-                except KeyError as e:
-                    raise e
+    def weave(self,chunks):
+        for chunk in chunks:
+            if chunk.type == 'code':
+                if not chunk.pre_args.processor in self.processors:
+                    self.init_processor(chunk.pre_args.processor)
+                processor = self.processors[chunk.pre_args.processor]
+                for node in processor.process(chunk):
+                    yield node
+            elif chunk.type == 'text':
+                yield chunk.raw
             else:
-                proc_ = procs_init[proc_name].process
+                logger.error('unsupported chunk type {0}'.
+                        format(chunk.type))
 
-        try:
-            chunk['stdout'],chunk['stderr'],chunk['traceback'],chunk['figpath']  = proc_(chunk['content_in'],chunk['pre_args'],args)
-        except Exception as e:
-            raise e
+    def tangle(self,chunk):
+        if chunk.type == 'code':
+            return chunk.raw
+        elif chunk.type == 'text':
+            pass
+        else:
+            logger.error('unsupported chunk type {0}'.
+                    format(chunk.type))
 
-        yield chunk
+    def process(self,chunk,outweave=None,outtangle=None):
+        if outweave:
+            outweave.append(weave(chunk))
+        if outtangle:
+            outtangle.append(tangle(chunk))
 
 
 def post_process(fileobject,procs_avail):
