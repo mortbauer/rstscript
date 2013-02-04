@@ -16,17 +16,20 @@ def make_preparser():
     return preparser,processor
 
 
-def optionparser(optionstring,default_subcommand=''):
+def optionparser(optionstring,command='',opts=''):
     """ parses a string containing options into a dict
-    Reference: http://stackoverflow.com/a/12013711/1607448
+    Reference: inspired by http://stackoverflow.com/a/12013711/1607448
     """
     args = shlex.split(optionstring)
     options = {}
+    sub_options = {}
+    options['options'] = sub_options
+    logger.info('options: {0}'.format(optionstring))
     if not args[0].startswith('-'):
         options['command'] = args[0]
         args = args[1:]
     else:
-        options['command'] = default_subcommand
+        options['command'] = command
 
     skip = False
     for x,y in zip(args, args[1:]+["--"]):
@@ -35,56 +38,87 @@ def optionparser(optionstring,default_subcommand=''):
             continue
         else:
             if y.startswith('-') and x.startswith('-'):
-                options[x] = True
+                sub_options[x] = True
                 skip = False
             elif x.startswith('-'):
-                options[x] = y
+                sub_options[x] = y
                 skip = True
             else:
                 skip = False
                 logger.error('invalid options {0}'.format(optionstring))
     return options
 
-def testoptions(options,knownoptions):
-    for opt in options:
-        if not opt in knownoptions:
-            logger.error('option "{0}" is unhandled'.format(opt))
-
 class Litrunner(object):
+    """ Litrunner main Class
+    The following needs to be done in order to run it correct
+
+    * instantiate it
+    * register some processors ``register_processor``
+    * register some formatters ``register_formatter``
+    * set default processor and formatter with their options ``set_defaults``
+    * test if conditions seem to be good `` test_readiness``, if it returns
+      ``False`` the you provided bullshit.
+
+    Now it should be fine to read or do whatever.
+    """
+
     def __init__(self):
         self.processorClasses = {}
         self.processors = {}
         self.formatters = {}
-        # setup chunk pre parser
-        self.preparser = argparse.ArgumentParser()
-        self.pre_subparser = self.preparser.add_subparsers(dest='processor')
-        self.preparser.set_defaults(processor='python')
-        self.preparser.add_argument('-e','--echo',action='store_true',help='echoes the commands')
-        # setup chunk post parser
-        self.postparser = argparse.ArgumentParser()
-        self.postparser.set_defaults(formatter='compact')
-        self.post_subparser = self.postparser.add_subparsers(dest='formatters')
-        #self.subparserformatter = self.postparser.add_subparsers(dest='formatter')
-        self.postparser.add_argument('-l','--label',help='label of the chunk')
+        self.preargs = {}
+        self.postargs = {}
 
-    def init_processor(self,name):
-        self.processors[name] = self.processorClasses[name]()
+    def get_processor(self,name):
+        if not name in self.processors:
+            self.processors[name] = self.processorClasses[name]()
+        return self.processors[name].process
+
+    def get_formatter(self,name):
+        return self.formatters[name].process
 
     def register_processor(self,ProcessorClass):
         # maybe a bit unusual, but seems to work
-        if not ProcessorClass.name in self.pre_subparser.choices:
-            self.pre_subparser.choices[ProcessorClass.name] = ProcessorClass.parser
+        if not ProcessorClass.name in self.processorClasses:
             self.processorClasses[ProcessorClass.name] = ProcessorClass
+            self.preargs[ProcessorClass.name] = ProcessorClass.aliases
         else:
             logger.error('processor "{0}" already known'.format(ProcessorClass.name))
 
     def register_formatter(self,FormatterClass):
         # maybe a bit unusual, but seems to work
-        if not FormatterClass.name in self.post_subparser.choices:
-            self.post_subparser.choices[FormatterClass.name] = FormatterClass.parser
+        if not FormatterClass.name in self.postargs:
+            self.postargs[FormatterClass.name] = FormatterClass.aliases
             self.formatters[FormatterClass.name] = FormatterClass()
         else:
             logger.error('processor "{0}" already known'.format(FormatterClass.name))
+
+    def set_defaults(self,pre_command,pre_options,post_command,post_options):
+        self.default_pre_command = pre_command
+        self.default_pre_options = pre_options
+        self.default_post_command = post_command
+        self.default_post_options = post_options
+
+    def test_readiness(self):
+        if not self.default_pre_command in self.processorClasses:
+            logger.error('command "{0}", set as default command is unknown,'
+                    'won\'t do anything'.format(self.default_pre_command))
+            return False
+        if not self.default_post_command in self.formatters:
+            logger.error('command "{0}", set as default formatter is unknown,'
+                    'won\'t do anything'.format(self.default_post_command))
+            return False
+        for opt in self.default_pre_options:
+            if not opt in self.preargs[self.default_pre_command]:
+                logger.error('option "{0}", set as default option is unknown,'
+                    'won\'t do anything'.format(opt))
+                return False
+        for opt in self.default_post_options:
+            if not opt in self.postargs[self.default_post_command]:
+                logger.error('option "{0}", set as default option is unknown,'
+                    'won\'t do anything'.format(opt))
+                return False
+        return True
 
     def read(self,fileobject):
         """This function returns a generator
@@ -118,11 +152,13 @@ class Litrunner(object):
 
         def get_pre_param(line):
             """ get chunk pre arguments """
-            return self.preparser.parse_args(shlex.split(line))
+            opts = optionparser(line,self.default_pre_command,self.default_pre_options)
+            return opts
 
         def get_post_param(line):
             """ get chunk post arguments """
-            return self.postparser.parse_args(shlex.split(line))
+            opts = optionparser(line,self.default_post_command,self.default_post_options)
+            return opts
 
         for line in fileobject:
             line_start = line[:token_length]
@@ -161,21 +197,25 @@ class Litrunner(object):
     def weave(self,chunks):
         for chunk in chunks:
             if chunk.type == 'code':
-                if not chunk.pre_args.processor in self.processors:
-                    self.init_processor(chunk.pre_args.processor)
-                processor = self.processors[chunk.pre_args.processor]
-                for cchunk in processor.process(chunk):
+                processor = self.get_processor(chunk.pre_args['command'])
+                for cchunk in processor(chunk):
                     yield cchunk
             elif chunk.type == 'text':
-                yield hunks.CChunk(chunk,chunk.raw,None,None,None,None,None)
+                yield hunks.CChunk(chunk,[hunks.Text(chunk.raw)])
             else:
                 logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
 
     def format(self,cchunks):
         for cchunk in cchunks:
-            formatter = self.formatters[cchunk.chunk.post_args.formatter]
-            yield from formatter.format(cchunk)
+            if cchunk.chunk.type == 'code':
+                formatter = self.get_formatter(cchunk.chunk.post_args['command'])
+                yield from formatter(cchunk)
+            elif cchunk.chunk.type == 'text':
+                yield cchunk.hunks[0].formatted
+            else:
+                logger.error('unsupported chunk type {0}'.
+                        format(chunk.type))
 
 def post_process(fileobject,procs_avail):
     proc_name = ''

@@ -6,21 +6,29 @@ import ast
 from io import StringIO
 from .colorlog import getlogger
 from . import astvisitors
-from . import nodes
-
+from . import hunks
 
 logger = getlogger('litscript.process')
+
+def optionconverter(options):
+    rev = {}
+    for opt in options:
+        for alias in options[opt]:
+            rev[alias] = opt
+    return rev
 
 class PythonProcessor(object):
     name = 'python'
     parser = argparse.ArgumentParser('python',description=('the python standard executer'))
+    options = {'echo':['-e','--echo'],'autoprint':['-a','--autoprint']}
+    aliases = optionconverter(options)
 
     def __init__(self):
         self.init = True
         self.globallocal = {}
-        self.traceback = StringIO()
         self.stderr = StringIO()
         self.stdout = StringIO()
+        self.traceback = StringIO()
         self.stdout_sys = sys.stdout
         self.stderr_sys = sys.stderr
         self.visitor = astvisitors.LitVisitor()
@@ -32,25 +40,33 @@ class PythonProcessor(object):
         self.stderr.seek(0)
         self.traceback.seek(0)
         try:
-            exec(codechunk,self.globallocal,self.globallocal)
+            exec(codechunk.codeobject,self.globallocal,self.globallocal)
         except:
-            self.traceback.write(traceback.format_exc())
-            logger.warning('failed on {0}'.format(tb[:10]))
+            tr = traceback.format_exc().strip()
+            # remove all line until a line containing litscript.dynamic except
+            # the first
+            st = tr.find('\n')+1
+            en = tr.find('File "<litscript.dynamic>"')
+            self.traceback.write(tr[:st])
+            self.traceback.write(tr[en:])
+            logger.warning('failed on line {0} with {1}'.
+                    format(codechunk.codeobject.co_firstlineno,tr[tr.rfind('\n')+1:]))
         finally:
             sys.stdout = self.stdout_sys
             sys.stderr = self.stderr_sys
         self.stdout.truncate()
         self.stderr.truncate()
-        self.traceback.truncate()
-        if self.stderr.tell():
-            yield nodes.error_node(self.stderr.getvalue())
-        if self.traceback.tell():
-            yield nodes.traceback_node(self.traceback.getvalue())
-        if self.stdout.tell():
-            yield nodes.result_node_node(self.stdout.getvalue())
+        ce = hunks.CodeError(self.stderr.getvalue())
+        ct = hunks.CodeTraceback(self.traceback.getvalue())
+        cout = hunks.CodeResult(self.stdout.getvalue())
+        cs = hunks.CodeIn(codechunk.source)
+        coo = codechunk.codeobject
+        return hunks.CHunk(cs,coo,cout,ce,ct,{})
 
     def process(self,chunk):
         tree = ast.parse(chunk.raw)
-        for codechunk in self.visitor.visit(tree):
-            yield from self.execute(codechunk)
+        lhunks = []
+        for codechunk in self.visitor.visit(tree,chunk.lineNumber):
+            lhunks.append(self.execute(codechunk))
+        yield hunks.CChunk(chunk,lhunks)
 
