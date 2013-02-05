@@ -4,7 +4,6 @@ import sys
 import logging
 import colorama
 import argparse
-import cli.app
 
 from . import chunks
 from . import formatters
@@ -169,8 +168,7 @@ def make_parser(pre_parser):
     return parser
 
 
-@cli.app.Application()
-def main(app,exit_after_main=0):
+def main(argv=None):
     """Litscript Main
     can be either called from commandline, or in an interactive
     python environment.
@@ -182,8 +180,7 @@ def main(app,exit_after_main=0):
     interactive_example::
 
         from litscript import main
-        main.main.argv = ['-w rst','helloworld.lit']
-        main.main.run()
+        main.main(argv=['-w rst','helloworld.lit'])
 
     """
 

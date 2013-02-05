@@ -6,7 +6,7 @@ import litscript
 setup(name='litscript',
       entry_points = {
           'console_scripts' :
-              ['litscript = litscript.main:main.run'
+              ['litscript = litscript.main:main'
                ]},
       version=litscript.__version__,
       description=litscript.__description__,
