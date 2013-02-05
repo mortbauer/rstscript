@@ -3,32 +3,40 @@ import os
 import traceback
 import argparse
 import ast
-from io import StringIO
-from .colorlog import getlogger
+import logging
+import io
+
 from . import astvisitors
 from . import hunks
+from . import utils
 
-logger = getlogger('litscript.process')
+logger = logging.getLogger('litscript.process')
 
-def optionconverter(options):
-    rev = {}
-    for opt in options:
-        for alias in options[opt]:
-            rev[alias] = opt
-    return rev
+class BaseProcessor(utils.PluginBase):
+    plugins = {}
 
 class PythonProcessor(object):
-    name = 'python'
-    parser = argparse.ArgumentParser('python',description=('the python standard executer'))
-    options = {'echo':['-e','--echo'],'autoprint':['-a','--autoprint']}
-    aliases = optionconverter(options)
+    _options = {'echo':['-e','--echo'],'autoprint':['-a','--autoprint']}
+    _aliases = utils.optionconverter(_options)
+
+    @property
+    def aliases(self):
+        return self._aliases
+
+    @property
+    def options(self):
+        return self._options
+
+    @property
+    def name(self):
+        return 'python'
 
     def __init__(self):
         self.init = True
         self.globallocal = {}
-        self.stderr = StringIO()
-        self.stdout = StringIO()
-        self.traceback = StringIO()
+        self.stderr = io.StringIO()
+        self.stdout = io.StringIO()
+        self.traceback = io.StringIO()
         self.stdout_sys = sys.stdout
         self.stderr_sys = sys.stderr
         self.visitor = astvisitors.LitVisitor()

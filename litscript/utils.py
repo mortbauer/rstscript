@@ -1,5 +1,46 @@
-import signal
 import os
+import abc
+import signal
+import logging
+
+logger = logging.getLogger('litscript.utils')
+
+def optionconverter(options):
+    rev = {}
+    for opt in options:
+        for alias in options[opt]:
+            rev[alias] = opt
+    return rev
+
+
+class classproperty(object):
+     def __init__(self, getter):
+         self.getter= getter
+     def __get__(self, instance, owner):
+         return self.getter(owner)
+
+class PluginBase(metaclass=abc.ABCMeta):
+    @classmethod
+    def register(self):
+        if not '__abstractmethods__' in self.__dict__:
+            self.plugins[self.name] = self
+            return True
+        else:
+            logger.error('plugin "{0}" is abstract, disabling it'
+                    .format(self.name))
+            return False
+    @abc.abstractmethod
+    def name(self):
+        pass
+    @abc.abstractmethod
+    def process(self):
+        pass
+    @abc.abstractmethod
+    def aliases(self):
+        pass
+    @abc.abstractmethod
+    def options(self):
+        pass
 
 
 class LitscriptException(Exception):
@@ -29,24 +70,4 @@ def timeout(timeout_time, default):
             return retval
         return f2
     return timeout_decorated
-
-# A very Simple and Stupid plugin system in python
-# from: http://blog.mathieu-leplatre.info/a-very-simple-and-stupid-plugin-system-in-python.html
-def plugins_list(plugins_dirs):
-    """ List all python modules in specified plugins folders """
-    for path in plugins_dirs.split(os.pathsep):
-        for filename in os.listdir(path):
-            name, ext = os.path.splitext(filename)
-            if ext.endswith(".py"):
-                yield name
-
-
-def import_plugins(plugins_dirs, env):
-    """ Import modules into specified environment (symbol table) """
-    for p in plugins_list(plugins_dirs):
-        try:
-            m = __import__(p, env)
-            env[p] = m
-        except Exception as e:
-            print(e)
 

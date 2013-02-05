@@ -1,16 +1,17 @@
-from io import StringIO
+import os
 import re
 import pdb
 import argparse
 import collections
 import shlex
-from .colorlog import getlogger
+import logging
+from io import StringIO
 from . import process
 from . import hunks
 
 __all__ = ['read','pre_process','process','post_process', 'write']
 
-logger = getlogger('litscript.chunks')
+logger = logging.getLogger('litscript.chunks')
 
 def make_preparser():
     return preparser,processor
@@ -62,12 +63,19 @@ class Litrunner(object):
     Now it should be fine to read or do whatever.
     """
 
-    def __init__(self):
+    def __init__(self,options={}):
         self.processorClasses = {}
         self.processors = {}
         self.formatters = {}
         self.preargs = {}
         self.postargs = {}
+        self.options = options
+
+    def get_figdir(self):
+        """ to easily create the figdir on the fly if needed"""
+        if not os.path.exists(self.figdir):
+            os.mkdir(self.figdir)
+        return self.figdir
 
     def get_processor(self,name):
         if not name in self.processors:
