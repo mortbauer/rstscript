@@ -4,6 +4,7 @@ import sys
 import logging
 import colorama
 import argparse
+import cli.app
 
 from . import chunks
 from . import formatters
@@ -168,7 +169,8 @@ def make_parser(pre_parser):
     return parser
 
 
-def main(argv=None):
+@cli.app.Application()
+def main(app,exit_after_main=0):
     """Litscript Main
     can be either called from commandline, or in an interactive
     python environment.
@@ -180,19 +182,16 @@ def main(argv=None):
     interactive_example::
 
         from litscript import main
-        main.main(['-w rst','helloworld.lit']
+        main.main.argv = ['-w rst','helloworld.lit']
+        main.main.run()
 
     """
 
-    # run from terminal, remove filename as the first argument
-    if argv is None:
-        argv = sys.argv[1:]
-
-    # read configfile argument
+    ## read configfile argument
     pre_parser = make_pre_parser()
 
     # if length of argv is to small, call the help
-    if len(argv) < 1:
+    if len(app.argv) < 1:
         pre_parser.print_help()
         raise LitscriptException()
 
@@ -201,7 +200,7 @@ def main(argv=None):
                                              )
                     }
     pre_parser.set_defaults(**hard_defaults)
-    args, remaining_argv = pre_parser.parse_known_args(argv)
+    args, remaining_argv = pre_parser.parse_known_args(app.argv)
     # read configfile
     config_parser = read_config(args.conf_file)
     if config_parser.has_section('default'):
@@ -239,9 +238,5 @@ def main(argv=None):
     print(formatters.BaseFormatter.plugins)
     return
 
-
-if __name__ == '__main__':
-    #sys.exit(main())
-    main()
 
 # vim: set ts=4 sw=4 tw=79 :
