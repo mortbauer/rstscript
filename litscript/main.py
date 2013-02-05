@@ -1,35 +1,40 @@
-import re
 import os
 import sys
 import logging
+import pprint
 import colorama
 import argparse
 
-from . import utils
-from . import chunks
-from . import formatters
-from . import processors
+from litscript import utils
+from litscript import chunks
+from litscript import processors
 
-from .__init__ import __version__
-from .utils import LitscriptException
+from litscript.__init__ import __version__
+from litscript.utils import LitscriptException
 
 if sys.version_info[0] >= 3:
     from configparser import SafeConfigParser
 else:
     from ConfigParser import SafeConfigParser
 
+logger = logging.getLogger('litscript')
 
-class HelpParser(argparse.ArgumentParser):
-    """ creates a modified parser
-    which will print the help message if
-    an error occurs
-
-    Note: from Stackoverflow answer http://stackoverflow.com/a/4042861/1607448
-    """
-    def error(self, message):
-        #sys.stderr.write('error: %s\n' % message)
-        self.print_help()
-        raise LitscriptException(message)
+def guess_outputfile(inputpath,basenamein,ext,force=False):
+    basename = os.path.splitext(basenamein)[0]+os.path.extsep+ext
+    outputfile = os.path.join(inputpath,basename)
+    # test if outputfile existing, won't touch it if it does
+    if os.path.exists(outputfile):
+        if not force:
+            raise LitscriptException('outputfile "{0}" existing, provide'
+            'name explicit or force me'.format(outputfile))
+        else:
+            logger.warning('will override existing file "{0}"'
+                    .format(outputfile))
+            return open(outputfile,'wt')
+    else:
+        logger.info('tryed to be smart and guessed output file to "{0}"'
+                .format(outputfile))
+        return open(outputfile,'wt')
 
 class ColorizingStreamHandler(logging.StreamHandler):
     # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
@@ -108,37 +113,38 @@ def make_parser(pre_parser):
                         " files.")
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                       help="Run in debugging mode.")
-    parser.add_argument('-l','--log-level',dest='loglevel', default='ERROR',
+    parser.add_argument("-f", "--force", action="store_true", default=False,
+                      help="will override existing files without asking")
+    parser.add_argument('-l','--log-level',dest='loglevel', default='WARNING',
                       help='Specify the logging level')
     parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,
                       help='Disable stdout logging')
     parser.add_argument('--version', action='version', version=__version__)
 
-    #subparsers = parser.add_subparsers(dest='command',description='',help='specify a subcommand')
+    subparsers = parser.add_subparsers(dest='command',description='',help='specify a subcommand')
 
-    #weaveparser = subparsers.add_parser('weave', help='weave the document')
+    weaveparser = subparsers.add_parser('weave', help='weave the document')
 
-    parser.add_argument('-i', dest='source',type=argparse.FileType('rt'), nargs=1,
-                      default=[sys.stdin], help='litscript source file')
-    parser.add_argument("-o", "--output", dest="output",
-                        type=argparse.FileType('wt'), nargs=1,
-                      help="Specify the output file for the weaved content.")
-    #weaveparser.add_argument("--figure-directory", dest='figdir',
-                      #action="store", default='_figures',
-                      #help="Directory path for matplolib graphics:"
-                        #" Default 'figures'")
-    #weaveparser.add_argument("-g","--figure-format", dest="figfmt",
-                      #action="store", default="png",
-                      #help="Figure format for matplolib graphics: Defaults to"
-                        #"'png' for rst and Sphinx html documents and 'pdf' "
-                        #"for tex")
+    weaveparser.add_argument('-i','--input', dest='input',type=argparse.FileType('rt'), nargs=1,
+                      required=True,default=[sys.stdin], help='litscript source file')
+    weaveparser.add_argument("-o", "--output", dest="output",
+                        type=argparse.FileType('wt'), nargs='?',
+                      help="output file for weaving")
+    weaveparser.add_argument("--figure-directory", dest='figdir',
+                      action="store", default='_figures',
+                      help="path to store produced figures")
+    weaveparser.add_argument("-g","--figure-format", dest="figfmt",
+                      action="store", default="png",
+                      help="Figure format for matplolib graphics: Defaults to"
+                        "'png' for rst and Sphinx html documents and 'pdf' "
+                        "for tex")
 
-   # tangleparser = subparsers.add_parser('tangle', help='tangle the document')
-    #tangleparser.add_argument('-i', dest='source',type=argparse.FileType('rt'), nargs=1,
-                      #default=[sys.stdin], help='litscript source file')
-    #tangleparser.add_argument("-o", "--output", dest="output", nargs=1,
-                        #type=argparse.FileType('wt'),
-                      #help="Specify the output file for the tangled content.")
+    tangleparser = subparsers.add_parser('tangle', help='tangle the document')
+    tangleparser.add_argument('-i', dest='input',type=argparse.FileType('rt'), nargs=1,
+                      required=True, default=[sys.stdin], help='litscript source file')
+    tangleparser.add_argument("-o", "--output", dest="output", nargs='?',
+                        type=argparse.FileType('wt'),
+                      help="Specify the output file for the tangled content.")
     return parser
 
 
@@ -161,6 +167,7 @@ def main():
         run(sys.argv[1:])
         sys.exit(0)
     except LitscriptException as e:
+        print(e)
         sys.exit(1)
 
 def run(argv):
@@ -196,18 +203,31 @@ def run(argv):
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     try:
-        logger.setLevel(getattr(logging,args['loglevel'].upper()))
+        if args['debug']:
+            logger.setLevel('DEBUG')
+        else:
+            logger.setLevel(getattr(logging,args['loglevel'].upper()))
     except:
         raise LitscriptException('invalid logging level "{0}"'.format(args['loglevel']))
     # my first logging task
-    logger.info('parsed options {0}'.format(args))
+    logger.info('parsed options \n{0}'.format(pprint.pformat(args)))
+    # set some paths
+    args['inputpath'], args['basename'] = os.path.split(os.path.abspath(args['input'][0].name))
+    # try to gues output if not specified
+    if not args['output']:
+        if args['command'] == 'weave':
+            args['output'] = guess_outputfile(args['inputpath'],
+                    args['basename'],'rst',force=args['force'])
+        elif args['command'] == 'tangle':
+            args['output'] = guess_outputfile(args['inputpath'],
+                    args['basename'],'py',force=args['force'])
     # default figdir
-    if not os.path.isabs(args['figdir']) and args['output']:
-        outputdir = os.path.split(args['output'])[0]
-        args['figdir'] = os.path.join(os.path.abspath(outputdir),args['figdir'])
+    if not os.path.isabs(args['figdir']) and args['command'] == 'weave':
+        args['outputpath'] = os.path.split(args['output'].name)[0]
+        args['figdir'] = os.path.join(args['outputpath'],args['figdir'])
     # load the default processors and formatter
     processors.PythonProcessor.register()
-    formatters.CompactFormatter.register()
+    processors.CompactFormatter.register()
     # import plugin modules,if they can register themself on module level
     plugin_moduls = utils.import_plugins(args['plugindir'])
     # create the Litrunner object
@@ -215,18 +235,21 @@ def run(argv):
     # register all loaded processors and formatters in the Litrunner object
     for processor in processors.BaseProcessor.plugins.values():
         L.register_processor(processor)
-    for formatter in formatters.BaseFormatter.plugins.values():
+    for formatter in processors.BaseFormatter.plugins.values():
         L.register_formatter(formatter)
     # set default processor and formatter and options
-    L.set_defaults(processors.PythonProcessor.name,{},formatters.CompactFormatter.name,{})
+    L.set_defaults(processors.PythonProcessor.name,{},processors.CompactFormatter.name,{})
     # test if Litrunner is ready
     if L.test_readiness():
         logger.info('Litrunner "{0}" ready'.format(L))
     # now lets look what we have to do
     if args['command'] == 'weave':
-        args['output'].write(L.format(L.weave(L.read(args['source']))))
+        for formatted in L.format(L.weave(L.read(args['input'][0]))):
+            args['output'].write(formatted)
 
     return
 
+if __name__ == '__main__':
+    main()
 
 # vim: set ts=4 sw=4 tw=79 :

@@ -1,12 +1,9 @@
 import os
-import re
-import pdb
 import argparse
 import collections
 import shlex
 import logging
 from io import StringIO
-from . import processors
 from . import hunks
 
 __all__ = ['read','pre_process','processors','post_process', 'write']
@@ -27,7 +24,7 @@ class Litrunner(object):
     Now it should be fine to read or do whatever.
     """
 
-    def __init__(self,options={}):
+    def __init__(self,options={}) :
         self.processorClasses = {}
         self.processors = {}
         self.formatters = {}
@@ -48,13 +45,13 @@ class Litrunner(object):
                 logger.info('instantiated processor "{0}"'.format(name))
             return self.processors[name].process
         else:
+            logger.error('there is no processor named "{0}",'
+            'i will try the default one'.format(name))
             dname = self.default_pre_command
             if not dname in self.processors:
                 self.processors[dname] = self.processorClasses[dname]()
-                logger.info('instantiated processor "{0}"'.format(name))
+                logger.info('instantiated processor "{0}"'.format(dname))
             return self.processors[dname].process
-            logger.error('there is no processor named "{0}",'
-            'i will try the default one'.format(name))
 
     def get_formatter(self,name):
         return self.formatters[name].process
@@ -151,7 +148,6 @@ class Litrunner(object):
             options = {}
             sub_options = {}
             options['options'] = sub_options
-            logger.info('options: {0}'.format(optionstring))
             if not args[0].startswith('-'):
                 options['command'] = args[0]
                 args = args[1:]
@@ -208,7 +204,6 @@ class Litrunner(object):
         if content.tell() != 0:
             yield buildchunk(chunkn,linechunk,'text',None,None,content)
 
-
     def weave(self,chunks):
         for chunk in chunks:
             if chunk.type == 'code':
@@ -235,7 +230,7 @@ class Litrunner(object):
         for cchunk in cchunks:
             if cchunk.chunk.type == 'code':
                 formatter = self.get_formatter(cchunk.chunk.post_args['command'])
-                yield from formatter(cchunk)
+                yield from formatter(cchunk,cchunk.chunk.post_args['options'])
             elif cchunk.chunk.type == 'text':
                 yield cchunk.hunks[0].formatted
             else:

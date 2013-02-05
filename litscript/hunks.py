@@ -3,7 +3,7 @@ import collections
 import textwrap
 
 CChunk = collections.namedtuple('CChunk',['chunk','hunks'])
-CHunk = collections.namedtuple('CHunk',['source','codeobject','stdout','stderr','traceback','diff'])
+CHunk = collections.namedtuple('CHunk',['source','codeobject','stdout','stderr','traceback','globallocal'])
 THunk = collections.namedtuple('THunk',['source'])
 
 
@@ -60,9 +60,11 @@ class CodeTraceback(CodeBlock):
     pass
 
 
-class CodeError(CodeBlock):
+class CodeStdErr(CodeBlock):
     pass
 
+class CodeStdOut(CodeBlock):
+    pass
 
 class CodeIn(CodeBlock):
     pass

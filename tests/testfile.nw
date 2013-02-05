@@ -4,7 +4,21 @@ Hallo Susi
 
 print('pfiate')
 a='hhhhhhhh'
-p = w
+def myfunc():
+    return 5*5
+b = 2*4
+c = myfunc()
+d = myfunc
+%>>compact --autoprint
+Hallo Martin 
+Hallo Susi
+%<<pythonn
 
+print('pfiate')
+a='hhhhhhhh'
+def myfunc():
+    return 5*5
+b = 2*4
+c = myfunc()
+d = myfunc
 %>>compact
-Hallo Martin

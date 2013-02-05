@@ -6,14 +6,12 @@ import numpy
 import ast
 from litscript import chunks
 from litscript import processors
-from litscript import astvisitors
-from litscript import formatters
 
 def setup_base_litrunner():
     L = chunks.Litrunner()
     L.register_processor(processors.PythonProcessor)
-    L.register_formatter(formatters.CompactFormatter)
-    L.set_defaults(processors.PythonProcessor.name,{},formatters.CompactFormatter.name,{})
+    L.register_formatter(processors.CompactFormatter)
+    L.set_defaults(processors.PythonProcessor.name,{},processors.CompactFormatter.name,{})
     L.test_readiness()
     return L
 
@@ -55,7 +53,7 @@ class LitTester(unittest.TestCase):
     def test_astvisitor(self):
         a = "b= lambda x: x*5 +5\ndef hhh(u):\n    b=19\n    return u*b\nm=hhh(9*4+5)"
         tree = ast.parse(a)
-        visitor = astvisitors.LitVisitor()
+        visitor = processors.LitVisitor()
         for node in visitor.visit(tree,1):
             pass
 
