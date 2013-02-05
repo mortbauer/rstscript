@@ -6,7 +6,6 @@ import numpy
 import ast
 from litscript import chunks
 from litscript import processors
-from litscript import dictdiffer
 from litscript import astvisitors
 from litscript import formatters
 
@@ -20,13 +19,6 @@ def setup_base_litrunner():
 
 class LitTester(unittest.TestCase):
     testfile = os.path.join(os.path.split(__file__)[0],'testfile.nw')
-
-    def test_dictdiffer(self):
-        a = numpy.array([1,2,3,4])
-        dnew = {'a':a}
-        dold = {'a':a}
-        diff = dictdiffer.DictDiffer(dnew,dold)
-        self.assertTrue(diff.changed())
 
     def test_readfile(self):
         L = setup_base_litrunner()

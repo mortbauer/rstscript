@@ -29,7 +29,7 @@ class HelpParser(argparse.ArgumentParser):
     def error(self, message):
         #sys.stderr.write('error: %s\n' % message)
         self.print_help()
-        raise LitscriptException('to few arguments "litscript -h" for help')
+        raise LitscriptException(message)
 
 class ColorizingStreamHandler(logging.StreamHandler):
     # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
@@ -84,69 +84,61 @@ def read_config(conf_file):
 
 
 def make_pre_parser():
-    #conf_parser = argparse.ArgumentParser(
-    conf_parser = HelpParser(
+    conf_parser = argparse.ArgumentParser(
+    #conf_parser = HelpParser(
     # Turn off help, so we print all options in response to -h
         add_help=False
         )
-    conf_parser.add_argument("-c", "--conf_file", dest="conf_file",
+    conf_parser.add_argument("-c", "--conf", dest="conf",
                              help="Specify config file", metavar="FILE")
     return conf_parser
 
 
 def make_parser(pre_parser):
-    parser = HelpParser(
-    #parser = argparse.ArgumentParser(
+    #parser = HelpParser(
+    parser = argparse.ArgumentParser(
     # Inherit options from config_parser
     parents=[pre_parser],
-    # simple usage message
-    usage="litscript [options] sourcefile",
     # version
     )
 
-    parser.add_argument("-w", "--weave", dest="weave",
-                      action="store", default=None,
-                      help="Should the document be weaved? If yes, provide the"
-                      " extension of the weaved output document.")
-    parser.add_argument("-t", "--tangl", dest="tangle",
-                      action="store", default=None,
-                      help="Should the document be tangeld? If yes provide the"
-                      " ending of the tangeld output document.")
-    parser.add_argument("-f", "--format", dest="format",
-                      action="store", default="rst",
-                      help="The output format: 'rst' only "
-                        "one available so far.")
-    parser.add_argument("--figure-directory", dest='figdir',
-                      action="store", default='_figures',
-                      help="Directory path for matplolib graphics:"
-                        " Default 'figures'")
-    parser.add_argument("-g","--figure-format", dest="figfmt",
-                      action="store", default="png",
-                      help="Figure format for matplolib graphics: Defaults to"
-                        "'png' for rst and Sphinx html documents and 'pdf' "
-                        "for tex")
     parser.add_argument("-p", "--plugin-directory", dest="plugindir",
-                      action="store", default=[],
+                      action="store", default='',
                       help="Optional directory containing litscript plugin"
                         " files.")
-    parser.add_argument("-ow", "--output-weave", dest="woutput",
-                        default=None, nargs=1,
-                      help="Specify the output file for the weaved content.")
-    parser.add_argument("-ot", "--output-tangle", dest="toutput", nargs=1,
-                        default=None,
-                      help="Specify the output file for the tangled content.")
-    parser.add_argument("--force", action="store_true", default=False,
-                      help="Overwrite existing files without asking.")
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                       help="Run in debugging mode.")
-    parser.add_argument('source', type=argparse.FileType('rt'), nargs=1,
-                      default=[sys.stdin],
-                      help='The to processing source file.')
     parser.add_argument('-l','--log-level',dest='loglevel', default='ERROR',
                       help='Specify the logging level')
     parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,
                       help='Disable stdout logging')
     parser.add_argument('--version', action='version', version=__version__)
+
+    #subparsers = parser.add_subparsers(dest='command',description='',help='specify a subcommand')
+
+    #weaveparser = subparsers.add_parser('weave', help='weave the document')
+
+    parser.add_argument('-i', dest='source',type=argparse.FileType('rt'), nargs=1,
+                      default=[sys.stdin], help='litscript source file')
+    parser.add_argument("-o", "--output", dest="output",
+                        type=argparse.FileType('wt'), nargs=1,
+                      help="Specify the output file for the weaved content.")
+    #weaveparser.add_argument("--figure-directory", dest='figdir',
+                      #action="store", default='_figures',
+                      #help="Directory path for matplolib graphics:"
+                        #" Default 'figures'")
+    #weaveparser.add_argument("-g","--figure-format", dest="figfmt",
+                      #action="store", default="png",
+                      #help="Figure format for matplolib graphics: Defaults to"
+                        #"'png' for rst and Sphinx html documents and 'pdf' "
+                        #"for tex")
+
+   # tangleparser = subparsers.add_parser('tangle', help='tangle the document')
+    #tangleparser.add_argument('-i', dest='source',type=argparse.FileType('rt'), nargs=1,
+                      #default=[sys.stdin], help='litscript source file')
+    #tangleparser.add_argument("-o", "--output", dest="output", nargs=1,
+                        #type=argparse.FileType('wt'),
+                      #help="Specify the output file for the tangled content.")
     return parser
 
 
@@ -165,28 +157,24 @@ def main():
         main.run(['-w rst','helloworld.lit'])
 
     """
-    logger = logging.getLogger('litscript')
     try:
-        logger.info('start run')
         run(sys.argv[1:])
         sys.exit(0)
     except LitscriptException as e:
-        logger.fatal(e)
         sys.exit(1)
-    logger.info('end')
 
 def run(argv):
     ## read configfile argument
     pre_parser = make_pre_parser()
 
-    hard_defaults = {"conf_file":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
+    hard_defaults = {"conf":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
                                               "litscript","config"
                                              )
                     }
     pre_parser.set_defaults(**hard_defaults)
     args, remaining_argv = pre_parser.parse_known_args(argv)
     # read configfile
-    config_parser = read_config(args.conf_file)
+    config_parser = read_config(args.conf)
     if config_parser.has_section('default'):
         soft_defaults = dict(config_parser.items("default"))
     else:
@@ -211,10 +199,12 @@ def run(argv):
         logger.setLevel(getattr(logging,args['loglevel'].upper()))
     except:
         raise LitscriptException('invalid logging level "{0}"'.format(args['loglevel']))
+    # my first logging task
+    logger.info('parsed options {0}'.format(args))
     # default figdir
-    if not os.path.isabs(args['figdir']) and args['woutput']:
-        outputdir = os.path.split(args['woutput'])[0]
-        args.figdir = os.path.join(os.path.abspath(outputdir),args['figdir'])
+    if not os.path.isabs(args['figdir']) and args['output']:
+        outputdir = os.path.split(args['output'])[0]
+        args['figdir'] = os.path.join(os.path.abspath(outputdir),args['figdir'])
     # load the default processors and formatter
     processors.PythonProcessor.register()
     formatters.CompactFormatter.register()
@@ -233,6 +223,8 @@ def run(argv):
     if L.test_readiness():
         logger.info('Litrunner "{0}" ready'.format(L))
     # now lets look what we have to do
+    if args['command'] == 'weave':
+        args['output'].write(L.format(L.weave(L.read(args['source']))))
 
     return
 
