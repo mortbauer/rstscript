@@ -6,48 +6,12 @@ import collections
 import shlex
 import logging
 from io import StringIO
-from . import process
+from . import processors
 from . import hunks
 
-__all__ = ['read','pre_process','process','post_process', 'write']
+__all__ = ['read','pre_process','processors','post_process', 'write']
 
 logger = logging.getLogger('litscript.chunks')
-
-def make_preparser():
-    return preparser,processor
-
-
-def optionparser(optionstring,command='',opts=''):
-    """ parses a string containing options into a dict
-    Reference: inspired by http://stackoverflow.com/a/12013711/1607448
-    """
-    args = shlex.split(optionstring)
-    options = {}
-    sub_options = {}
-    options['options'] = sub_options
-    logger.info('options: {0}'.format(optionstring))
-    if not args[0].startswith('-'):
-        options['command'] = args[0]
-        args = args[1:]
-    else:
-        options['command'] = command
-
-    skip = False
-    for x,y in zip(args, args[1:]+["--"]):
-        if skip:
-            skip = False
-            continue
-        else:
-            if y.startswith('-') and x.startswith('-'):
-                sub_options[x] = True
-                skip = False
-            elif x.startswith('-'):
-                sub_options[x] = y
-                skip = True
-            else:
-                skip = False
-                logger.error('invalid options {0}'.format(optionstring))
-    return options
 
 class Litrunner(object):
     """ Litrunner main Class
@@ -78,9 +42,19 @@ class Litrunner(object):
         return self.figdir
 
     def get_processor(self,name):
-        if not name in self.processors:
-            self.processors[name] = self.processorClasses[name]()
-        return self.processors[name].process
+        if name in self.processorClasses:
+            if not name in self.processors:
+                self.processors[name] = self.processorClasses[name]()
+                logger.info('instantiated processor "{0}"'.format(name))
+            return self.processors[name].process
+        else:
+            dname = self.default_pre_command
+            if not dname in self.processors:
+                self.processors[dname] = self.processorClasses[dname]()
+                logger.info('instantiated processor "{0}"'.format(name))
+            return self.processors[dname].process
+            logger.error('there is no processor named "{0}",'
+            'i will try the default one'.format(name))
 
     def get_formatter(self,name):
         return self.formatters[name].process
@@ -160,13 +134,46 @@ class Litrunner(object):
 
         def get_pre_param(line):
             """ get chunk pre arguments """
-            opts = optionparser(line,self.default_pre_command,self.default_pre_options)
+            opts = parse_options(line,self.default_pre_command,self.default_pre_options)
             return opts
 
         def get_post_param(line):
             """ get chunk post arguments """
-            opts = optionparser(line,self.default_post_command,self.default_post_options)
+            opts = parse_options(line,self.default_post_command,self.default_post_options)
             return opts
+
+
+        def parse_options(optionstring,command='',opts=''):
+            """ parses a string containing options into a dict
+            Reference: inspired by http://stackoverflow.com/a/12013711/1607448
+            """
+            args = shlex.split(optionstring)
+            options = {}
+            sub_options = {}
+            options['options'] = sub_options
+            logger.info('options: {0}'.format(optionstring))
+            if not args[0].startswith('-'):
+                options['command'] = args[0]
+                args = args[1:]
+            else:
+                options['command'] = command
+
+            skip = False
+            for x,y in zip(args, args[1:]+["--"]):
+                if skip:
+                    skip = False
+                    continue
+                else:
+                    if y.startswith('-') and x.startswith('-'):
+                        sub_options[x] = True
+                        skip = False
+                    elif x.startswith('-'):
+                        sub_options[x] = y
+                        skip = True
+                    else:
+                        skip = False
+                        logger.error('invalid options {0}'.format(optionstring))
+            return options
 
         for line in fileobject:
             line_start = line[:token_length]
@@ -214,6 +221,16 @@ class Litrunner(object):
                 logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
 
+    def tangle(self,chunks):
+        for chunk in chunks:
+            if chunk.type == 'code':
+                yield chunk.raw
+            elif chunk.type == 'text':
+                continue
+            else:
+                logger.error('unsupported chunk type {0}'.
+                        format(chunk.type))
+
     def format(self,cchunks):
         for cchunk in cchunks:
             if cchunk.chunk.type == 'code':
@@ -224,39 +241,4 @@ class Litrunner(object):
             else:
                 logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
-
-def post_process(fileobject,procs_avail):
-    proc_name = ''
-    proc_ = None
-    procs_init = {}
-    for chunk in fileobject:
-        if chunk['type'] != 'code':
-            chunk['content_out'] = chunk['content_raw']
-            proc_ = None
-        elif chunk['type'] == 'code':
-            if chunk['post_args']['post'] != proc_name:
-                proc_name = chunk['post_args']['post']
-            if not proc_ in procs_init:
-                try:
-                    procs_init[proc_name] = procs_avail[proc_name]()
-                    proc_ = procs_init[proc_name].process
-                except KeyError as e:
-                    raise e
-            else:
-                proc_ = procs_init[proc_name].process
-
-            #try:
-                #chunk['content_out'] = proc_(chunk)
-            #except Exception as e:
-                #raise e
-        chunk['post_processor'] = proc_
-        yield chunk
-
-
-def write(fileobject_in, fileobject_out):
-    for chunk in fileobject_in:
-        if chunk['post_processor'] != None:
-            chunk['post_processor'](chunk,fileobject_out)
-        else:
-            fileobject_out.write(chunk['content_out'].getvalue())
 

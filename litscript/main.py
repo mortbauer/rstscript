@@ -5,8 +5,10 @@ import logging
 import colorama
 import argparse
 
+from . import utils
 from . import chunks
 from . import formatters
+from . import processors
 
 from .__init__ import __version__
 from .utils import LitscriptException
@@ -16,7 +18,6 @@ if sys.version_info[0] >= 3:
 else:
     from ConfigParser import SafeConfigParser
 
-logger = logging.getLogger('litscript.main')
 
 class HelpParser(argparse.ArgumentParser):
     """ creates a modified parser
@@ -26,9 +27,9 @@ class HelpParser(argparse.ArgumentParser):
     Note: from Stackoverflow answer http://stackoverflow.com/a/4042861/1607448
     """
     def error(self, message):
-        sys.stderr.write('error: %s\n' % message)
+        #sys.stderr.write('error: %s\n' % message)
         self.print_help()
-        sys.exit(2)
+        raise LitscriptException('to few arguments "litscript -h" for help')
 
 class ColorizingStreamHandler(logging.StreamHandler):
     # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
@@ -71,26 +72,6 @@ class ColorizingStreamHandler(logging.StreamHandler):
         except KeyError:
             return message
 
-def import_plugins(plugindir):
-    if plugindir:
-        sys.path.insert(0, plugindir)
-        # get all py files and strip the extension
-        pyfiles = [x[:-3] for x in os.listdir(plugindir) if x.endswith('.py')]
-        # import the modules which we found in the plugin path
-        plugin_modules = {}
-        for module in pyfiles:
-            try:
-                plugin_modules[module] = __import__(module)
-            except Exception as e:
-                logger.error('skipping plugin "{0}": {1}'.format(module,e))
-        # remove added paths again
-        sys.path.remove(plugindir)
-
-        return plugin_modules
-    else:
-        return {}
-
-
 def read_config(conf_file):
     config_parser = SafeConfigParser()
     abspath = os.path.abspath(conf_file)
@@ -103,6 +84,7 @@ def read_config(conf_file):
 
 
 def make_pre_parser():
+    #conf_parser = argparse.ArgumentParser(
     conf_parser = HelpParser(
     # Turn off help, so we print all options in response to -h
         add_help=False
@@ -113,8 +95,8 @@ def make_pre_parser():
 
 
 def make_parser(pre_parser):
-    #parser = HelpParser(
-    parser = argparse.ArgumentParser(
+    parser = HelpParser(
+    #parser = argparse.ArgumentParser(
     # Inherit options from config_parser
     parents=[pre_parser],
     # simple usage message
@@ -168,10 +150,10 @@ def make_parser(pre_parser):
     return parser
 
 
-def main(argv=None):
+def main():
     """Litscript Main
-    can be either called from commandline, or in an interactive
-    python environment.
+    can be either called from commandline, if you want to use it as libary
+    use directly the ``run`` function.
 
     cmd_example::
 
@@ -180,17 +162,22 @@ def main(argv=None):
     interactive_example::
 
         from litscript import main
-        main.main(argv=['-w rst','helloworld.lit'])
+        main.run(['-w rst','helloworld.lit'])
 
     """
+    logger = logging.getLogger('litscript')
+    try:
+        logger.info('start run')
+        run(sys.argv[1:])
+        sys.exit(0)
+    except LitscriptException as e:
+        logger.fatal(e)
+        sys.exit(1)
+    logger.info('end')
 
+def run(argv):
     ## read configfile argument
     pre_parser = make_pre_parser()
-
-    # if length of argv is to small, call the help
-    if len(argv) < 1:
-        pre_parser.print_help()
-        raise LitscriptException()
 
     hard_defaults = {"conf_file":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
                                               "litscript","config"
@@ -212,7 +199,7 @@ def main(argv=None):
     # parse remaining args
     args = vars(parser.parse_args(remaining_argv))
     # setup the logger
-    logger = logging.getLogger('litscript.main')
+    logger = logging.getLogger('litscript')
     if args['quiet']:
         handler = logging.NullHandler()
     else:
@@ -221,18 +208,32 @@ def main(argv=None):
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     try:
-        logger.setLevel(getattr(logging,args['loglevel']))
-    except AttributeError:
+        logger.setLevel(getattr(logging,args['loglevel'].upper()))
+    except:
         raise LitscriptException('invalid logging level "{0}"'.format(args['loglevel']))
     # default figdir
     if not os.path.isabs(args['figdir']) and args['woutput']:
         outputdir = os.path.split(args['woutput'])[0]
         args.figdir = os.path.join(os.path.abspath(outputdir),args['figdir'])
-    # import plugin modules
-    plugin_moduls = import_plugins(args['plugindir'])
-
+    # load the default processors and formatter
+    processors.PythonProcessor.register()
+    formatters.CompactFormatter.register()
+    # import plugin modules,if they can register themself on module level
+    plugin_moduls = utils.import_plugins(args['plugindir'])
+    # create the Litrunner object
     L = chunks.Litrunner(options=args)
-    print(formatters.BaseFormatter.plugins)
+    # register all loaded processors and formatters in the Litrunner object
+    for processor in processors.BaseProcessor.plugins.values():
+        L.register_processor(processor)
+    for formatter in formatters.BaseFormatter.plugins.values():
+        L.register_formatter(formatter)
+    # set default processor and formatter and options
+    L.set_defaults(processors.PythonProcessor.name,{},formatters.CompactFormatter.name,{})
+    # test if Litrunner is ready
+    if L.test_readiness():
+        logger.info('Litrunner "{0}" ready'.format(L))
+    # now lets look what we have to do
+
     return
 
 

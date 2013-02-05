@@ -6,9 +6,12 @@ from . import utils
 logger = logging.getLogger('litscript.formatter')
 
 class BaseFormatter(utils.PluginBase):
+    plugtype = 'formatter'
     plugins = {}
 
+
 class CompactFormatter(BaseFormatter):
+    name = 'compact'
     _options = {'linewise':['--linewise']}
     _aliases = utils.optionconverter(_options)
 
@@ -19,10 +22,6 @@ class CompactFormatter(BaseFormatter):
     @property
     def options(self):
         return self._options
-
-    @property
-    def name(self):
-        return 'compact'
 
     def process(self,cchunk):
         i = 0
