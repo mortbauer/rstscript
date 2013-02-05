@@ -188,7 +188,7 @@ def main(argv=None):
     pre_parser = make_pre_parser()
 
     # if length of argv is to small, call the help
-    if len(app.argv) < 1:
+    if len(argv) < 1:
         pre_parser.print_help()
         raise LitscriptException()
 
@@ -197,7 +197,7 @@ def main(argv=None):
                                              )
                     }
     pre_parser.set_defaults(**hard_defaults)
-    args, remaining_argv = pre_parser.parse_known_args(app.argv)
+    args, remaining_argv = pre_parser.parse_known_args(argv)
     # read configfile
     config_parser = read_config(args.conf_file)
     if config_parser.has_section('default'):
