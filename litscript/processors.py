@@ -132,12 +132,33 @@ class CompactFormatter(BaseFormatter):
     parser = argparse.ArgumentParser(name)
     parser.add_argument('-e',action='store_true',help='print source code')
     parser.add_argument('-a',action='store_true',help='autoprint Numbers')
+    parser.add_argument('-s',action='store_true',help='hide all code results, except tracebacks')
+
+    def _decide(self,hunk,options):
+        # needs to stay on top to silence output
+        if options.setdefault('s',False):
+            if type(hunk)==hunks.CodeTraceback:
+                return hunk
+            else:
+                return hunks.Empty()
+        if type(hunk)==hunks.CodeResult:
+            if options.setdefault('a',False):
+                return hunk
+        elif type(hunk)==hunks.CodeIn:
+            if options.setdefault('e',False):
+                return hunk
+        else:
+            return hunk
+        # if not previously returned return now empty hunk
+        return hunks.Empty()
 
     def process(self,cchunk,options):
-        yield cchunk.hunks[0].formatted
-        for hunk in cchunk.hunks[1:]:
-            if type(hunk)==hunks.CodeResult:
-                if options.setdefault('a',False):
-                    yield hunk.simple
+        i = 0
+        for hunk in cchunk.hunks:
+            if i == 0:
+                yield self._decide(hunk,options).formatted
             else:
-                yield hunk.simple
+                yield self._decide(hunk,options).simple
+            i += 1
+
+

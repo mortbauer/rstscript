@@ -157,10 +157,10 @@ def make_parser(pre_parser):
     return parser
 
 
-def main():
-    """Litscript Main
+def run():
+    """Litscript Main Wrapper for catching unexpected Errors
     can be either called from commandline, if you want to use it as libary
-    use directly the ``run`` function.
+    use directly the ``main`` function.
 
     cmd_example::
 
@@ -169,19 +169,40 @@ def main():
     interactive_example::
 
         from litscript import main
-        main.run(['-w rst','helloworld.lit'])
+        main.main(['-w rst','helloworld.lit'])
 
     """
-    try:
-        run(sys.argv[1:])
-        sys.exit(0)
-    except LitscriptException as e:
-        print(e)
-    #except Exception as e:
-        #print(e)
-        sys.exit(1)
+    if sys.argv[1] and sys.argv[1]=='-d':
+        # Debugging Mode with PDB
+        print('\nEnter Debbuging Mode:\n')
+        import pdb
+        import traceback
+        try:
+            main(sys.argv[1:])
+        except:
+            print('\n Traceback:\n')
+            errortype, value, tb = sys.exc_info()
+            traceback.print_exc()
+            print('\n Enter post_mortem Debugging:\n')
+            pdb.post_mortem(tb)
+            sys.exit(1)
+    else:
+        # silent mode
+        try:
+            main(sys.argv[1:])
+        except LitscriptException as e:
+            print(e)
+            sys.exit(1)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print('\nI\'m sorry but an unhandeled exception occured, '
+            'maybe try the debugging switch "-d" as first argument')
+            sys.exit(1)
 
-def run(argv):
+    sys.exit(0)
+
+def main(argv):
     ## read configfile argument
     pre_parser = make_pre_parser()
 

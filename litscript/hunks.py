@@ -23,6 +23,10 @@ class Empty(Node):
     @property
     def formatted(self):
         return ''
+    @property
+    def simple(self):
+        return ''
+
 
 class Text(Node):
     template = '\n{text}\n'

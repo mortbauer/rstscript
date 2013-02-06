@@ -22,3 +22,15 @@ b = 2*4
 c = myfunc()
 d = myfunc
 %>>
+
+now i'm going to fail 
+%<<pythonn -sf
+
+print('pfiate')
+a='hhhhhhhh'
+def myfunc():
+    return 5*5
+b = 2*4
+c = myfunc()
+d = myfunc
+%>>-l h

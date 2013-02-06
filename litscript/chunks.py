@@ -76,9 +76,11 @@ class Litrunner(object):
 
     def set_defaults(self,pre_command,pre_options,post_command,post_options):
         self.default_pre_command = pre_command
-        self.default_pre_options = vars(self.preargparser[pre_command].parse_args(pre_options))
+        self.default_pre_options = vars(self.preargparser[pre_command].
+                parse_known_args(pre_options)[0])
         self.default_post_command = post_command
-        self.default_post_options = vars(self.postargparser[post_command].parse_args(post_options))
+        self.default_post_options = vars(self.postargparser[post_command].
+                parse_known_args(post_options)[0])
 
     def test_readiness(self):
         if not self.default_pre_command in self.processorClasses:

@@ -12,7 +12,7 @@ def setup_base_litrunner():
     L = chunks.Litrunner()
     L.register_processor(processors.PythonProcessor)
     L.register_formatter(processors.CompactFormatter)
-    L.set_defaults(processors.PythonProcessor.name,{},processors.CompactFormatter.name,{})
+    L.set_defaults(processors.PythonProcessor.name,[],processors.CompactFormatter.name,[])
     L.test_readiness()
     return L
 
@@ -22,7 +22,7 @@ class LitTester(unittest.TestCase):
     def test_basic_argparsing(self):
         pre = main.make_pre_parser()
         parser = main.make_parser(pre)
-        args = parser.parse_args(['-d','--autoprint','weave','-itestfile.nw'])
+        args = parser.parse_args(['-d','weave','-itestfile.nw','--args','-a'])
         self.assertTrue(args.debug)
 
     def test_readfile(self):
