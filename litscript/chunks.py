@@ -5,6 +5,7 @@ import shlex
 import logging
 from io import StringIO
 from . import hunks
+from . import utils
 
 __all__ = ['read','pre_process','processors','post_process', 'write']
 
@@ -31,7 +32,7 @@ class Litrunner(object):
         self.preargparser = {}
         self.postargparser = {}
         self.options = options
-        self.parser = argparse.ArgumentParser('litscript.chunks')
+        self.parser = utils.LitParser('litscript.chunks')
         self.parser.add_argument('command')
 
     def get_figdir(self):
@@ -43,7 +44,7 @@ class Litrunner(object):
     def get_processor(self,name):
         if name in self.processorClasses:
             if not name in self.processors:
-                self.processors[name] = self.processorClasses[name]()
+                self.processors[name] = self.processorClasses[name](self.options)
                 logger.info('instantiated processor "{0}"'.format(name))
             return self.processors[name].process
         else:
@@ -78,9 +79,13 @@ class Litrunner(object):
         self.default_pre_command = pre_command
         self.default_pre_options = vars(self.preargparser[pre_command].
                 parse_known_args(pre_options)[0])
+        self.preargparser[pre_command].set_defaults(**self.default_pre_options)
         self.default_post_command = post_command
         self.default_post_options = vars(self.postargparser[post_command].
                 parse_known_args(post_options)[0])
+        self.postargparser[post_command].set_defaults(**self.default_post_options)
+        logger.info('pre_default {0}'.format(self.default_pre_options))
+        logger.info('post_default {0}'.format(self.default_post_options))
 
     def test_readiness(self):
         if not self.default_pre_command in self.processorClasses:
@@ -125,18 +130,29 @@ class Litrunner(object):
             return chunk
 
         def get_pre_param(line):
-            args,rargs = self.parser.parse_known_args(line)
-            if args.command in self.preargparser:
-                opts = self.preargparser[args.command].parse_args(rargs)
-                return args.command,opts
-            else:
+            try:
+                args,rargs = self.parser.parse_known_args(shlex.split(line))
+                if args.command in self.preargparser:
+                    opts = self.preargparser[args.command].parse_known_args(rargs)
+                    if len(opts[1]):
+                        logger.warning('unhandeled options "{0}" in chunk'.format(opts[1]))
+                    return args.command,vars(opts[0])
+                else:
+                    return self.default_pre_command,self.default_pre_options
+            except utils.LitscriptException:
                 return self.default_pre_command,self.default_pre_options
+
         def get_post_param(line):
-            args,rargs = self.parser.parse_known_args(line)
-            if args.command in self.postargparser:
-                opts = self.postargparser[args.command].parse_args(rargs)
-                return args.command,opts
-            else:
+            try:
+                args,rargs = self.parser.parse_known_args(shlex.split(line))
+                if args.command in self.postargparser:
+                    opts = self.postargparser[args.command].parse_known_args(rargs)
+                    if len(opts[1]):
+                        logger.warning('unhandeled options "{0}" in chunk'.format(opts[1]))
+                    return args.command,vars(opts[0])
+                else:
+                    return self.default_post_command,self.default_post_options
+            except utils.LitscriptException:
                 return self.default_post_command,self.default_post_options
 
         for line in fileobject:
@@ -146,14 +162,20 @@ class Litrunner(object):
             if line_start == chunk_start:
                 if content.tell() != 0:
                     yield buildchunk(chunkn,linechunk,'text',None,None,content)
-                pre_a = get_pre_param(line[token_length:])
+                try:
+                    pre_a = get_pre_param(line[token_length:])
+                except Exception as e:
+                    logger.error('{0} {1}'.format(e,line))
                 delimtercounter += 1
                 linechunk = linecounter
                 chunkn += 1
             # on end of chunk delimiter yield code
             elif line_start == chunk_end:
                 if content.tell() != 0:
-                    post_a = get_post_param(line[token_length:])
+                    try:
+                        post_a = get_post_param(line[token_length:])
+                    except Exception as e:
+                        logger.error('{0} {1}'.format(e,line))
                     yield buildchunk(chunkn,linechunk,'code',pre_a,post_a,content)
                 delimtercounter -= 1
                 linechunk = linecounter + 1
@@ -174,6 +196,7 @@ class Litrunner(object):
 
 
     def weave(self,chunks):
+        logger = logging.getLogger('litscript.chunks.weave')
         for chunk in chunks:
             if chunk.type == 'code':
                 processor = self.get_processor(chunk.pre_args[0])
@@ -196,6 +219,7 @@ class Litrunner(object):
                         format(chunk.type))
 
     def format(self,cchunks):
+        logger = logging.getLogger('litscript.chunks.format')
         for cchunk in cchunks:
             if cchunk.chunk.type == 'code':
                 formatter = self.get_formatter(cchunk.chunk.post_args[0])

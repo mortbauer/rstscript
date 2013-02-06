@@ -3,8 +3,15 @@ import sys
 import abc
 import signal
 import logging
+import argparse
 
 logger = logging.getLogger('litscript.utils')
+
+class LitParser(argparse.ArgumentParser):
+    #def exit(self):
+        #raise LitscriptException('couldn\'t parse the arguments')
+    def error(self,message):
+        raise LitscriptException('couldn\'t parse the arguments')
 
 def import_plugins(plugindir):
     if plugindir:

@@ -3,8 +3,10 @@ Hallllo
 
 Hallo Martin 
 Hallo Susi
-%<<pythonn
 
+%<<
+from pylab import *
+plot(1,2)
 print('pfiate')
 a='hhhhhhhh'
 def myfunc():
@@ -12,11 +14,13 @@ def myfunc():
 b = 2*4
 c = myfunc()
 d = myfunc
-%>>compact --autoprint
+%>>compact --desc 'My shiny cool figure'
+
 Hallo Martin 
 Hallo Susi
 %<<pythonn
-
+from pylab import *
+plot(1,2)
 print('pfiate')
 a='hhhhhhhh'
 def myfunc():
@@ -26,14 +30,4 @@ c = myfunc()
 d = myfunc
 %>>
 
-now i'm going to fail 
-%<<pythonn -sf
-
-print('pfiate')
-a='hhhhhhhh'
-def myfunc():
-    return 5*5
-b = 2*4
-c = myfunc()
-d = myfunc
-%>>-l h
+see also `None_3_1`_

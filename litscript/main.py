@@ -136,6 +136,9 @@ def make_parser(pre_parser):
     weaveparser.add_argument("-o", "--output", dest="output",
                         type=argparse.FileType('wt'), nargs='?',
                       help="output file for weaving")
+    #weaveparser.add_argument("--autofigure", dest='autofigure',
+                      #action="store_true", default=False,
+                      #help="created figures will be saved automatically")
     weaveparser.add_argument("--figure-directory", dest='figdir',
                       action="store", default='_figures',
                       help="path to store produced figures")
@@ -172,7 +175,7 @@ def run():
         main.main(['-w rst','helloworld.lit'])
 
     """
-    if sys.argv[1] and sys.argv[1]=='-d':
+    if len(sys.argv)>1 and sys.argv[1] and sys.argv[1]=='-d':
         # Debugging Mode with PDB
         print('\nEnter Debbuging Mode:\n')
         import pdb

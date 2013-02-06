@@ -38,7 +38,7 @@ class Text(Node):
 
 class CodeBlock(Node):
     template = '\n.. code-block:: {lang}\n\n{code}\n'
-    def __init__(self,code,label='',language=''):
+    def __init__(self,code,label='',language='python'):
         self.code = textwrap.indent(code.strip(),'\t')
         self.lang = language
         self.label = label
@@ -75,14 +75,19 @@ class CodeIn(CodeBlock):
 
 
 class Figure(Node):
-    template = ('.. figure:: {self.path}\n\t:alt: {self.alt}\n\t:width: {self.width}'
-            '\n\t:height: {self.height}\n\n\t{self.label}')
-    def __init__(self,path,label='',alt='',width='100%',height='100%'):
+    template = ('\n.. _{self.label}:\n\n.. figure:: {self.path}\n\t:alt: {self.alt}\n\t:width: {self.width}'
+            '\n\t:height: {self.height}\n\n\t{self.desc}\n')
+    def __init__(self,path,label='',alt='',width='100mm',height='100mm',desc=''):
         self.path = path
         self.label = label
         self.alt = alt
         self.width = width
         self.height = height
+        self.desc = desc
     @property
     def formatted(self):
+        return self.template.format(self=self)
+
+    @property
+    def simple(self):
         return self.template.format(self=self)

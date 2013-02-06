@@ -1,3 +1,4 @@
+import os
 import io
 import sys
 import ast
@@ -61,11 +62,13 @@ class PythonProcessor(BaseProcessor):
     name = 'python'
     options = {'echo':['-e','--echo'],'autoprint':['-a','--autoprint']}
     aliases = utils.optionconverter(options)
-    parser = argparse.ArgumentParser(name)
+    parser = utils.LitParser(name)
     parser.add_argument('-e',action='store_true',help='print source code')
     parser.add_argument('-a',action='store_true',help='autoprint Numbers')
+    parser.add_argument('--autofigure',action='store_true',help='autosave figures')
+    parser.add_argument('--label',action='store',help='define a chunk label')
 
-    def __init__(self):
+    def __init__(self,options):
         self.init = True
         self.globallocal = {}
         self.stderr = io.StringIO()
@@ -74,8 +77,16 @@ class PythonProcessor(BaseProcessor):
         self.stdout_sys = sys.stdout
         self.stderr_sys = sys.stderr
         self.visitor = LitVisitor()
+        self.options = options
+        self.plt = False
 
-    def execute(self,codechunk):
+    def get_figdir(self):
+        """ to easily create the figdir on the fly if needed"""
+        if not os.path.exists(self.options['figdir']):
+            os.mkdir(self.options['figdir'])
+        return self.options['figdir']
+
+    def execute(self,codechunk,options):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
         self.stdout.seek(0)
@@ -98,10 +109,11 @@ class PythonProcessor(BaseProcessor):
             sys.stderr = self.stderr_sys
         self.stdout.truncate()
         self.stderr.truncate()
+        yield hunks.CodeIn(codechunk.source)
         yield hunks.CodeStdErr(self.stderr.getvalue())
         yield hunks.CodeTraceback(self.traceback.getvalue())
         yield hunks.CodeStdOut(self.stdout.getvalue())
-        yield hunks.CodeIn(codechunk.source)
+        # for autoprinting
         if codechunk.assign:
             coa = codechunk.assign
             try:
@@ -111,13 +123,39 @@ class PythonProcessor(BaseProcessor):
 
         #return hunks.CHunk(cs,coo,cout,ce,ct,self.globallocal)
 
+    def _saveallfigures(self,label,desc):
+        if not self.plt:
+            try:
+                import matplotlib.pyplot
+                self.plt = matplotlib.pyplot
+            except:
+                raise utils.LitscriptException('you need matplotlib for using autofigure')
+        for num in self.plt.get_fignums():
+            fig = self.plt.figure(num)
+            name = '{0}_{1}.png'.format(label,num)
+            figpath =os.path.join(self.get_figdir(),name)
+            fig.savefig(figpath)
+            yield hunks.Figure(figpath,label=os.path.splitext(name)[0],desc=desc)
+
     def process(self,chunk):
         tree = ast.parse(chunk.raw)
         lhunks = []
         for codechunk in self.visitor.visit(tree,chunk.lineNumber):
-            for hunk in self.execute(codechunk):
+            for hunk in self.execute(codechunk,chunk.pre_args[1]):
+                # test if hunk is empty or not, only append not empty
                 if hunk.simple:
                     lhunks.append(hunk)
+        # autosave figures
+        if chunk.pre_args[1]['autofigure']:
+            try:
+                label = '{0}_{1}'.format(chunk.post_args[1]['label'],chunk.number)
+                for fig in self._saveallfigures(label,
+                        chunk.post_args[1]['desc']):
+                    lhunks.append(fig)
+                self.plt.close('all')
+            except Exception as e:
+                logger.error('couldn\'t save figure, Exception {0}'.format(e))
+
         yield hunks.CChunk(chunk,lhunks)
 
 class BaseFormatter(utils.PluginBase):
@@ -129,10 +167,14 @@ class CompactFormatter(BaseFormatter):
     name = 'compact'
     options = {'linewise':['--linewise'],'autoprint':['--autoprint']}
     aliases = utils.optionconverter(options)
-    parser = argparse.ArgumentParser(name)
+    parser = utils.LitParser(name)
     parser.add_argument('-e',action='store_true',help='print source code')
     parser.add_argument('-a',action='store_true',help='autoprint Numbers')
     parser.add_argument('-s',action='store_true',help='hide all code results, except tracebacks')
+    parser.add_argument('--autofigure',action='store_true',help='autosave figures')
+    parser.add_argument('--label',action='store',help='define a chunk label')
+    parser.add_argument('--desc',action='store',default='',
+            help='define a description if needed as for figure')
 
     def _decide(self,hunk,options):
         # needs to stay on top to silence output
