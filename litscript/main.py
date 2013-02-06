@@ -95,7 +95,7 @@ def make_pre_parser():
         add_help=False
         )
     conf_parser.add_argument("-c", "--conf", dest="conf",
-                             help="Specify config file", metavar="FILE")
+                             help="Specify config file")
     return conf_parser
 
 
@@ -121,6 +121,7 @@ def make_parser(pre_parser):
                       help='Disable stdout logging')
     parser.add_argument('--version', action='version', version=__version__)
 
+
     subparsers = parser.add_subparsers(dest='command',description='',help='specify a subcommand')
 
     weaveparser = subparsers.add_parser('weave', help='weave the document')
@@ -138,6 +139,8 @@ def make_parser(pre_parser):
                       help="Figure format for matplolib graphics: Defaults to"
                         "'png' for rst and Sphinx html documents and 'pdf' "
                         "for tex")
+    # pass remaining args on
+    weaveparser.add_argument('--args',default=[],action='store',nargs=argparse.REMAINDER)
 
     tangleparser = subparsers.add_parser('tangle', help='tangle the document')
     tangleparser.add_argument('-i', dest='input',type=argparse.FileType('rt'), nargs=1,
@@ -145,6 +148,7 @@ def make_parser(pre_parser):
     tangleparser.add_argument("-o", "--output", dest="output", nargs='?',
                         type=argparse.FileType('wt'),
                       help="Specify the output file for the tangled content.")
+    tangleparser.add_argument('--args',default=[],action='store',nargs=argparse.REMAINDER)
     return parser
 
 
@@ -168,6 +172,8 @@ def main():
         sys.exit(0)
     except LitscriptException as e:
         print(e)
+    #except Exception as e:
+        #print(e)
         sys.exit(1)
 
 def run(argv):
@@ -222,7 +228,7 @@ def run(argv):
             args['output'] = guess_outputfile(args['inputpath'],
                     args['basename'],'py',force=args['force'])
     # default figdir
-    if not os.path.isabs(args['figdir']) and args['command'] == 'weave':
+    if  args['command'] == 'weave' and not os.path.isabs(args['figdir']):
         args['outputpath'] = os.path.split(args['output'].name)[0]
         args['figdir'] = os.path.join(args['outputpath'],args['figdir'])
     # load the default processors and formatter
@@ -238,13 +244,17 @@ def run(argv):
     for formatter in processors.BaseFormatter.plugins.values():
         L.register_formatter(formatter)
     # set default processor and formatter and options
-    L.set_defaults(processors.PythonProcessor.name,{},processors.CompactFormatter.name,{})
+    L.set_defaults(processors.PythonProcessor.name,args['args'],
+            processors.CompactFormatter.name,args['args'])
     # test if Litrunner is ready
     if L.test_readiness():
         logger.info('Litrunner "{0}" ready'.format(L))
     # now lets look what we have to do
     if args['command'] == 'weave':
         for formatted in L.format(L.weave(L.read(args['input'][0]))):
+            args['output'].write(formatted)
+    elif args['command'] == 'tangle':
+        for formatted in L.tangle(L.read(args['input'][0])):
             args['output'].write(formatted)
 
     return

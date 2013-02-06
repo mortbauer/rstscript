@@ -58,16 +58,8 @@ class BaseProcessor(utils.PluginBase):
 
 class PythonProcessor(BaseProcessor):
     name = 'python'
-    _options = {'echo':['-e','--echo'],'autoprint':['-a','--autoprint']}
-    _aliases = utils.optionconverter(_options)
-
-    @property
-    def aliases(self):
-        return self._aliases
-
-    @property
-    def options(self):
-        return self._options
+    options = {'echo':['-e','--echo'],'autoprint':['-a','--autoprint']}
+    aliases = utils.optionconverter(options)
 
     def __init__(self):
         self.init = True
@@ -108,7 +100,10 @@ class PythonProcessor(BaseProcessor):
         yield hunks.CodeIn(codechunk.source)
         if codechunk.assign:
             coa = codechunk.assign
-            yield hunks.CodeResult('{0} = {1}'.format(coa,self.globallocal[coa]))
+            try:
+                yield hunks.CodeResult('{0} = {1}'.format(coa,self.globallocal[coa]))
+            except KeyError:
+                pass
 
         #return hunks.CHunk(cs,coo,cout,ce,ct,self.globallocal)
 
@@ -128,16 +123,8 @@ class BaseFormatter(utils.PluginBase):
 
 class CompactFormatter(BaseFormatter):
     name = 'compact'
-    _options = {'linewise':['--linewise'],'autoprint':['--autoprint']}
-    _aliases = utils.optionconverter(_options)
-
-    @property
-    def aliases(self):
-        return self._aliases
-
-    @property
-    def options(self):
-        return self._options
+    options = {'linewise':['--linewise'],'autoprint':['--autoprint']}
+    aliases = utils.optionconverter(options)
 
     def process(self,cchunk,options):
         yield cchunk.hunks[0].formatted
@@ -145,5 +132,8 @@ class CompactFormatter(BaseFormatter):
             if type(hunk)==hunks.CodeResult:
                 if options.setdefault('--autoprint',False):
                     yield hunk.simple
+                else:
+                    print(options)
+
             else:
                 yield hunk.simple

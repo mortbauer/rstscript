@@ -21,4 +21,4 @@ def myfunc():
 b = 2*4
 c = myfunc()
 d = myfunc
-%>>compact
+%>>

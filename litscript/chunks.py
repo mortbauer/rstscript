@@ -139,7 +139,6 @@ class Litrunner(object):
             opts = parse_options(line,self.default_post_command,self.default_post_options)
             return opts
 
-
         def parse_options(optionstring,command='',opts=''):
             """ parses a string containing options into a dict
             Reference: inspired by http://stackoverflow.com/a/12013711/1607448
@@ -148,27 +147,34 @@ class Litrunner(object):
             options = {}
             sub_options = {}
             options['options'] = sub_options
-            if not args[0].startswith('-'):
-                options['command'] = args[0]
-                args = args[1:]
+            if len(args):
+                if not args[0].startswith('-'):
+                    options['command'] = args[0]
+                    args = args[1:]
+                else:
+                    options['command'] = command
             else:
                 options['command'] = command
 
             skip = False
-            for x,y in zip(args, args[1:]+["--"]):
-                if skip:
-                    skip = False
-                    continue
-                else:
-                    if y.startswith('-') and x.startswith('-'):
-                        sub_options[x] = True
+            if len(args)>1:
+                for x,y in zip(args, args[1:]+["--"]):
+                    if skip:
                         skip = False
-                    elif x.startswith('-'):
-                        sub_options[x] = y
-                        skip = True
+                        continue
                     else:
-                        skip = False
-                        logger.error('invalid options {0}'.format(optionstring))
+                        if y.startswith('-') and x.startswith('-'):
+                            sub_options[x] = True
+                            skip = False
+                        elif x.startswith('-'):
+                            sub_options[x] = y
+                            skip = True
+                        else:
+                            skip = False
+                            logger.error('invalid options {0}'.format(optionstring))
+            else:
+                print('opts',opts)
+                sub_options = opts
             return options
 
         for line in fileobject:

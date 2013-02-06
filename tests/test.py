@@ -6,6 +6,7 @@ import numpy
 import ast
 from litscript import chunks
 from litscript import processors
+from litscript import main
 
 def setup_base_litrunner():
     L = chunks.Litrunner()
@@ -17,6 +18,12 @@ def setup_base_litrunner():
 
 class LitTester(unittest.TestCase):
     testfile = os.path.join(os.path.split(__file__)[0],'testfile.nw')
+
+    def test_basic_argparsing(self):
+        pre = main.make_pre_parser()
+        parser = main.make_parser(pre)
+        args = parser.parse_args(['-d','--autoprint','weave','-itestfile.nw'])
+        self.assertTrue(args.debug)
 
     def test_readfile(self):
         L = setup_base_litrunner()

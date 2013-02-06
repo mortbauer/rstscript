@@ -65,12 +65,6 @@ class PluginBase(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def process(self):
         pass
-    @abc.abstractmethod
-    def aliases(self):
-        pass
-    @abc.abstractmethod
-    def options(self):
-        pass
 
 class LitscriptException(Exception):
     """Base class for exceptions in this module."""
