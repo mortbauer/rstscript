@@ -19,23 +19,6 @@ else:
 
 logger = logging.getLogger('litscript')
 
-def guess_outputfile(inputpath,basenamein,ext,force=False):
-    basename = os.path.splitext(basenamein)[0]+os.path.extsep+ext
-    outputfile = os.path.join(inputpath,basename)
-    # test if outputfile existing, won't touch it if it does
-    if os.path.exists(outputfile):
-        if not force:
-            raise LitscriptException('outputfile "{0}" existing, provide'
-            'name explicit or force me'.format(outputfile))
-        else:
-            logger.warning('will override existing file "{0}"'
-                    .format(outputfile))
-            return open(outputfile,'wt')
-    else:
-        logger.info('tryed to be smart and guessed output file to "{0}"'
-                .format(outputfile))
-        return open(outputfile,'wt')
-
 class ColorizingStreamHandler(logging.StreamHandler):
     # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
     # Tweaked to use colorama for the coloring
@@ -44,10 +27,12 @@ class ColorizingStreamHandler(logging.StreamHandler):
     Sets up a colorized logger, which is used ltscript
     """
     color_map = {
+        logging.INFO: colorama.Fore.WHITE,
         logging.DEBUG: colorama.Style.DIM + colorama.Fore.CYAN,
         logging.WARNING: colorama.Fore.YELLOW,
         logging.ERROR: colorama.Fore.RED,
         logging.CRITICAL: colorama.Back.RED,
+        logging.FATAL: colorama.Back.RED,
     }
 
     def __init__(self, stream, color_map=None):
@@ -76,6 +61,24 @@ class ColorizingStreamHandler(logging.StreamHandler):
                     colorama.Style.RESET_ALL)
         except KeyError:
             return message
+
+def guess_outputfile(inputpath,basenamein,ext,force=False):
+    basename = os.path.splitext(basenamein)[0]+os.path.extsep+ext
+    outputfile = os.path.join(inputpath,basename)
+    # test if outputfile existing, won't touch it if it does
+    if os.path.exists(outputfile):
+        if not force:
+            raise LitscriptException('outputfile "{0}" existing, provide'
+            'name explicit or force me'.format(outputfile))
+        else:
+            logger.warning('will override existing file "{0}"'
+                    .format(outputfile))
+            return open(outputfile,'wt')
+    else:
+        logger.info('tryed to be smart and guessed output file to "{0}"'
+                .format(outputfile))
+        return open(outputfile,'wt')
+
 
 def read_config(conf_file):
     config_parser = SafeConfigParser()
@@ -111,6 +114,8 @@ def make_parser(pre_parser):
                       action="store", default='',
                       help="Optional directory containing litscript plugin"
                         " files.")
+    parser.add_argument('--no-plugins',action='store_true',
+                      help='disable all plugins')
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                       help="Run in debugging mode.")
     parser.add_argument("-f", "--force", action="store_true", default=False,
@@ -235,7 +240,8 @@ def run(argv):
     processors.PythonProcessor.register()
     processors.CompactFormatter.register()
     # import plugin modules,if they can register themself on module level
-    plugin_moduls = utils.import_plugins(args['plugindir'])
+    if not args['no_plugins']:
+        plugin_moduls = utils.import_plugins(args['plugindir'])
     # create the Litrunner object
     L = chunks.Litrunner(options=args)
     # register all loaded processors and formatters in the Litrunner object

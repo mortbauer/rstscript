@@ -5,6 +5,7 @@ import meta
 import traceback
 import logging
 import collections
+import argparse
 import pprint
 
 
@@ -60,6 +61,9 @@ class PythonProcessor(BaseProcessor):
     name = 'python'
     options = {'echo':['-e','--echo'],'autoprint':['-a','--autoprint']}
     aliases = utils.optionconverter(options)
+    parser = argparse.ArgumentParser(name)
+    parser.add_argument('-e',action='store_true',help='print source code')
+    parser.add_argument('-a',action='store_true',help='autoprint Numbers')
 
     def __init__(self):
         self.init = True
@@ -125,15 +129,15 @@ class CompactFormatter(BaseFormatter):
     name = 'compact'
     options = {'linewise':['--linewise'],'autoprint':['--autoprint']}
     aliases = utils.optionconverter(options)
+    parser = argparse.ArgumentParser(name)
+    parser.add_argument('-e',action='store_true',help='print source code')
+    parser.add_argument('-a',action='store_true',help='autoprint Numbers')
 
     def process(self,cchunk,options):
         yield cchunk.hunks[0].formatted
         for hunk in cchunk.hunks[1:]:
             if type(hunk)==hunks.CodeResult:
-                if options.setdefault('--autoprint',False):
+                if options.setdefault('a',False):
                     yield hunk.simple
-                else:
-                    print(options)
-
             else:
                 yield hunk.simple

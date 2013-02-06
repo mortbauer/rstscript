@@ -28,9 +28,11 @@ class Litrunner(object):
         self.processorClasses = {}
         self.processors = {}
         self.formatters = {}
-        self.preargs = {}
-        self.postargs = {}
+        self.preargparser = {}
+        self.postargparser = {}
         self.options = options
+        self.parser = argparse.ArgumentParser('litscript.chunks')
+        self.parser.add_argument('command')
 
     def get_figdir(self):
         """ to easily create the figdir on the fly if needed"""
@@ -60,23 +62,23 @@ class Litrunner(object):
         # maybe a bit unusual, but seems to work
         if not ProcessorClass.name in self.processorClasses:
             self.processorClasses[ProcessorClass.name] = ProcessorClass
-            self.preargs[ProcessorClass.name] = ProcessorClass.aliases
+            self.preargparser[ProcessorClass.name] = ProcessorClass.parser
         else:
             logger.error('processor "{0}" already known'.format(ProcessorClass.name))
 
     def register_formatter(self,FormatterClass):
         # maybe a bit unusual, but seems to work
-        if not FormatterClass.name in self.postargs:
-            self.postargs[FormatterClass.name] = FormatterClass.aliases
+        if not FormatterClass.name in self.postargparser:
+            self.postargparser[FormatterClass.name] = FormatterClass.parser
             self.formatters[FormatterClass.name] = FormatterClass()
         else:
             logger.error('processor "{0}" already known'.format(FormatterClass.name))
 
     def set_defaults(self,pre_command,pre_options,post_command,post_options):
         self.default_pre_command = pre_command
-        self.default_pre_options = pre_options
+        self.default_pre_options = vars(self.preargparser[pre_command].parse_args(pre_options))
         self.default_post_command = post_command
-        self.default_post_options = post_options
+        self.default_post_options = vars(self.postargparser[post_command].parse_args(post_options))
 
     def test_readiness(self):
         if not self.default_pre_command in self.processorClasses:
@@ -87,16 +89,6 @@ class Litrunner(object):
             logger.error('command "{0}", set as default formatter is unknown,'
                     'won\'t do anything'.format(self.default_post_command))
             return False
-        for opt in self.default_pre_options:
-            if not opt in self.preargs[self.default_pre_command]:
-                logger.error('option "{0}", set as default option is unknown,'
-                    'won\'t do anything'.format(opt))
-                return False
-        for opt in self.default_post_options:
-            if not opt in self.postargs[self.default_post_command]:
-                logger.error('option "{0}", set as default option is unknown,'
-                    'won\'t do anything'.format(opt))
-                return False
         return True
 
     def read(self,fileobject):
@@ -123,6 +115,7 @@ class Litrunner(object):
         Chunk = collections.namedtuple('Chunk', ['number','lineNumber','type','pre_args','post_args','raw'])
 
         def buildchunk(number,linenumber,chunktype,pre,post,content):
+            logger = logging.getLogger('litscript.chunks.read.buildchunk')
             content.truncate()
             chunk = Chunk(number,linenumber,chunktype,pre,post,content.getvalue())
             content.seek(0)
@@ -130,52 +123,19 @@ class Litrunner(object):
             return chunk
 
         def get_pre_param(line):
-            """ get chunk pre arguments """
-            opts = parse_options(line,self.default_pre_command,self.default_pre_options)
-            return opts
-
+            args,rargs = self.parser.parse_known_args(line)
+            if args.command in self.preargparser:
+                opts = self.preargparser[args.command].parse_args(rargs)
+                return args.command,opts
+            else:
+                return self.default_pre_command,self.default_pre_options
         def get_post_param(line):
-            """ get chunk post arguments """
-            opts = parse_options(line,self.default_post_command,self.default_post_options)
-            return opts
-
-        def parse_options(optionstring,command='',opts=''):
-            """ parses a string containing options into a dict
-            Reference: inspired by http://stackoverflow.com/a/12013711/1607448
-            """
-            args = shlex.split(optionstring)
-            options = {}
-            sub_options = {}
-            options['options'] = sub_options
-            if len(args):
-                if not args[0].startswith('-'):
-                    options['command'] = args[0]
-                    args = args[1:]
-                else:
-                    options['command'] = command
+            args,rargs = self.parser.parse_known_args(line)
+            if args.command in self.postargparser:
+                opts = self.postargparser[args.command].parse_args(rargs)
+                return args.command,opts
             else:
-                options['command'] = command
-
-            skip = False
-            if len(args)>1:
-                for x,y in zip(args, args[1:]+["--"]):
-                    if skip:
-                        skip = False
-                        continue
-                    else:
-                        if y.startswith('-') and x.startswith('-'):
-                            sub_options[x] = True
-                            skip = False
-                        elif x.startswith('-'):
-                            sub_options[x] = y
-                            skip = True
-                        else:
-                            skip = False
-                            logger.error('invalid options {0}'.format(optionstring))
-            else:
-                print('opts',opts)
-                sub_options = opts
-            return options
+                return self.default_post_command,self.default_post_options
 
         for line in fileobject:
             line_start = line[:token_length]
@@ -210,10 +170,11 @@ class Litrunner(object):
         if content.tell() != 0:
             yield buildchunk(chunkn,linechunk,'text',None,None,content)
 
+
     def weave(self,chunks):
         for chunk in chunks:
             if chunk.type == 'code':
-                processor = self.get_processor(chunk.pre_args['command'])
+                processor = self.get_processor(chunk.pre_args[0])
                 for cchunk in processor(chunk):
                     yield cchunk
             elif chunk.type == 'text':
@@ -235,8 +196,8 @@ class Litrunner(object):
     def format(self,cchunks):
         for cchunk in cchunks:
             if cchunk.chunk.type == 'code':
-                formatter = self.get_formatter(cchunk.chunk.post_args['command'])
-                yield from formatter(cchunk,cchunk.chunk.post_args['options'])
+                formatter = self.get_formatter(cchunk.chunk.post_args[0])
+                yield from formatter(cchunk,cchunk.chunk.post_args[1])
             elif cchunk.chunk.type == 'text':
                 yield cchunk.hunks[0].formatted
             else:
