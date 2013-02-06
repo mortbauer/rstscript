@@ -28,6 +28,6 @@ def myfunc():
 b = 2*4
 c = myfunc()
 d = myfunc
-%>>
+%>>--label 'myfigure'
 
 see also `None_3_1`_

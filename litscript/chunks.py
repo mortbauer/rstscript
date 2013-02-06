@@ -7,6 +7,8 @@ from io import StringIO
 from . import hunks
 from . import utils
 
+import ipdb
+
 __all__ = ['read','pre_process','processors','post_process', 'write']
 
 logger = logging.getLogger('litscript.chunks')
@@ -33,7 +35,7 @@ class Litrunner(object):
         self.postargparser = {}
         self.options = options
         self.parser = utils.LitParser('litscript.chunks')
-        self.parser.add_argument('command')
+        self.parser.add_argument('command',nargs='?')
 
     def get_figdir(self):
         """ to easily create the figdir on the fly if needed"""
@@ -50,7 +52,7 @@ class Litrunner(object):
         else:
             logger.error('there is no processor named "{0}",'
             'i will try the default one'.format(name))
-            dname = self.default_pre_command
+            dname = self.def_proc
             if not dname in self.processors:
                 self.processors[dname] = self.processorClasses[dname]()
                 logger.info('instantiated processor "{0}"'.format(dname))
@@ -75,26 +77,26 @@ class Litrunner(object):
         else:
             logger.error('processor "{0}" already known'.format(FormatterClass.name))
 
-    def set_defaults(self,pre_command,pre_options,post_command,post_options):
-        self.default_pre_command = pre_command
-        self.default_pre_options = vars(self.preargparser[pre_command].
-                parse_known_args(pre_options)[0])
-        self.preargparser[pre_command].set_defaults(**self.default_pre_options)
-        self.default_post_command = post_command
-        self.default_post_options = vars(self.postargparser[post_command].
-                parse_known_args(post_options)[0])
-        self.postargparser[post_command].set_defaults(**self.default_post_options)
-        logger.info('pre_default {0}'.format(self.default_pre_options))
-        logger.info('post_default {0}'.format(self.default_post_options))
+    def set_defaults(self,def_proc,def_proc_opts,def_form,def_form_opts):
+        self.def_proc = def_proc
+        self.def_proc_opts = vars(self.processorClasses[def_proc].parser.parse_args(def_proc_opts))
+        self.def_form = def_form
+        self.def_form_opts = vars(self.formatters[def_form].parser.parse_args(def_form_opts))
+        self.processorClasses[def_proc].parser.set_defaults(**self.def_proc_opts)
+        self.formatters[def_form].parser.set_defaults(**self.def_form_opts)
+        logger.info('def_proc "{0}"'.format(self.def_proc))
+        logger.info('def_form "{0}"'.format(self.def_form))
+        logger.info('def_proc_opts "{0}"'.format(self.def_proc_opts))
+        logger.info('def_form_opts "{0}"'.format(self.def_form_opts))
 
     def test_readiness(self):
-        if not self.default_pre_command in self.processorClasses:
+        if not self.def_proc in self.processorClasses:
             logger.error('command "{0}", set as default command is unknown,'
-                    'won\'t do anything'.format(self.default_pre_command))
+                    'won\'t do anything'.format(self.def_proc))
             return False
-        if not self.default_post_command in self.formatters:
+        if not self.def_form in self.formatters:
             logger.error('command "{0}", set as default formatter is unknown,'
-                    'won\'t do anything'.format(self.default_post_command))
+                    'won\'t do anything'.format(self.def_form))
             return False
         return True
 
@@ -130,30 +132,49 @@ class Litrunner(object):
             return chunk
 
         def get_pre_param(line):
-            try:
-                args,rargs = self.parser.parse_known_args(shlex.split(line))
-                if args.command in self.preargparser:
-                    opts = self.preargparser[args.command].parse_known_args(rargs)
-                    if len(opts[1]):
-                        logger.warning('unhandeled options "{0}" in chunk'.format(opts[1]))
-                    return args.command,vars(opts[0])
-                else:
-                    return self.default_pre_command,self.default_pre_options
-            except utils.LitscriptException:
-                return self.default_pre_command,self.default_pre_options
+            unparsed = shlex.split(line)
+            if len(unparsed) and unparsed[0][0] != '-':
+                lcommand = unparsed[0]
+                try:
+                    if lcommand in self.preargparser:
+                        parsed = self.preargparser[lcommand].parse_args(unparsed[1:])
+                        return lcommand,vars(parsed)
+                    else:
+                        logger.error('there is no processor named "{0}"'.format(lcommand))
+                except Exception as e:
+                    logger.error('couldn\'t parse "{0}", message "{1}"'.format(unparsed[1:],e))
+                    return lcommand,self.def_proc_opts
+            elif len(unparsed):
+                try:
+                    parsed = self.preargparser[self.def_proc].parse_args(unparsed)
+                    return self.def_proc,vars(parsed)
+                except Exception as e:
+                    logger.error('couldn\'t parse "{0}", message "{1}"'.format(unparsed,e))
+                    return self.def_proc,self.def_proc_opts
+            return self.def_proc,self.def_proc_opts
 
         def get_post_param(line):
-            try:
-                args,rargs = self.parser.parse_known_args(shlex.split(line))
-                if args.command in self.postargparser:
-                    opts = self.postargparser[args.command].parse_known_args(rargs)
-                    if len(opts[1]):
-                        logger.warning('unhandeled options "{0}" in chunk'.format(opts[1]))
-                    return args.command,vars(opts[0])
-                else:
-                    return self.default_post_command,self.default_post_options
-            except utils.LitscriptException:
-                return self.default_post_command,self.default_post_options
+            unparsed = shlex.split(line)
+            if len(unparsed) and unparsed[0][0] != '-':
+                lcommand = unparsed[0]
+                try:
+                    if lcommand in self.postargparser:
+                        parsed = self.postargparser[lcommand].parse_args(unparsed[1:])
+                        return lcommand,vars(parsed)
+                    else:
+                        logger.error('there is no formatter named "{0}"'.format(lcommand))
+                except Exception as e:
+                    logger.error('couldn\'t parse "{0}", message "{1}"'.format(unparsed[1:],e))
+                    return lcommand,self.def_form_opts
+            elif len(unparsed):
+                try:
+                    parsed = self.postargparser[self.def_form].parse_args(unparsed)
+                    return self.def_form,vars(parsed)
+                except Exception as e:
+                    logger.error('couldn\'t parse "{0}", message "{1}"'.format(unparsed,e))
+                    return self.def_form,self.def_form_opts
+            return self.def_form,self.def_form_opts
+
 
         for line in fileobject:
             line_start = line[:token_length]
@@ -162,20 +183,14 @@ class Litrunner(object):
             if line_start == chunk_start:
                 if content.tell() != 0:
                     yield buildchunk(chunkn,linechunk,'text',None,None,content)
-                try:
-                    pre_a = get_pre_param(line[token_length:])
-                except Exception as e:
-                    logger.error('{0} {1}'.format(e,line))
+                pre_a = get_pre_param(line[token_length:])
                 delimtercounter += 1
                 linechunk = linecounter
                 chunkn += 1
             # on end of chunk delimiter yield code
             elif line_start == chunk_end:
                 if content.tell() != 0:
-                    try:
-                        post_a = get_post_param(line[token_length:])
-                    except Exception as e:
-                        logger.error('{0} {1}'.format(e,line))
+                    post_a = get_post_param(line[token_length:])
                     yield buildchunk(chunkn,linechunk,'code',pre_a,post_a,content)
                 delimtercounter -= 1
                 linechunk = linecounter + 1

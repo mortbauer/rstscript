@@ -148,7 +148,10 @@ def make_parser(pre_parser):
                         "'png' for rst and Sphinx html documents and 'pdf' "
                         "for tex")
     # pass remaining args on
-    weaveparser.add_argument('--args',default=[],action='store',nargs=argparse.REMAINDER)
+    weaveparser.add_argument('--processor',default='python',action='store',nargs='?')
+    weaveparser.add_argument('--formatter',default='compact',action='store',nargs='?')
+    weaveparser.add_argument('--processor-opts',default=[],action='store',nargs='*')
+    weaveparser.add_argument('--formatter-opts',default=[],action='store',nargs='*')
 
     tangleparser = subparsers.add_parser('tangle', help='tangle the document')
     tangleparser.add_argument('-i', dest='input',type=argparse.FileType('rt'), nargs=1,
@@ -156,7 +159,6 @@ def make_parser(pre_parser):
     tangleparser.add_argument("-o", "--output", dest="output", nargs='?',
                         type=argparse.FileType('wt'),
                       help="Specify the output file for the tangled content.")
-    tangleparser.add_argument('--args',default=[],action='store',nargs=argparse.REMAINDER)
     return parser
 
 
@@ -178,17 +180,18 @@ def run():
     if len(sys.argv)>1 and sys.argv[1] and sys.argv[1]=='-d':
         # Debugging Mode with PDB
         print('\nEnter Debbuging Mode:\n')
-        import pdb
-        import traceback
-        try:
-            main(sys.argv[1:])
-        except:
-            print('\n Traceback:\n')
-            errortype, value, tb = sys.exc_info()
-            traceback.print_exc()
-            print('\n Enter post_mortem Debugging:\n')
-            pdb.post_mortem(tb)
-            sys.exit(1)
+        from litscript import debug
+        #import pdb
+        #import traceback
+        #try:
+        main(sys.argv[1:])
+        #except:
+            #print('\n Traceback:\n')
+            #errortype, value, tb = sys.exc_info()
+            #traceback.print_exc()
+            #print('\n Enter post_mortem Debugging:\n')
+            #pdb.post_mortem(tb)
+            #sys.exit(1)
     else:
         # silent mode
         try:
@@ -274,8 +277,8 @@ def main(argv):
     for formatter in processors.BaseFormatter.plugins.values():
         L.register_formatter(formatter)
     # set default processor and formatter and options
-    L.set_defaults(processors.PythonProcessor.name,args['args'],
-            processors.CompactFormatter.name,args['args'])
+    L.set_defaults(args['processor'],args['processor_opts'],
+            args['formatter'],args['formatter_opts'])
     # test if Litrunner is ready
     if L.test_readiness():
         logger.info('Litrunner "{0}" ready'.format(L))
