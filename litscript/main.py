@@ -4,9 +4,10 @@ import logging
 import pprint
 import colorama
 import argparse
+import traceback
 
 from litscript import utils
-from litscript import chunks
+from litscript import litrunner
 from litscript import processors
 
 from litscript.__init__ import __version__
@@ -80,6 +81,32 @@ def guess_outputfile(inputpath,basenamein,ext,force=False):
         return open(outputfile,'wt')
 
 
+def parse_through_args(proc_form_args):
+    if '--formatter-opts' in proc_form_args:
+        i_f = proc_form_args.index('--formatter-opts')
+    else:
+        i_f = 0
+    if '--processor-opts' in proc_form_args:
+        i_p = proc_form_args.index('--processor-opts')
+    else:
+        i_p = 0
+    # if there are remaining arguments but non of the keys is specified i will
+    # take them for both
+    proc_args = []
+    form_args = []
+    if i_f == 0 and i_p == 0:
+        proc_args = proc_form_args
+        form_args = proc_form_args
+    elif i_f > i_p:
+        proc_args = proc_form_args[i_p+1:i_f]
+        form_args = proc_form_args[i_f+1:]
+    elif i_f < i_p:
+        proc_args = proc_form_args[i_p+1:]
+        form_args = proc_form_args[i_f+1:i_p]
+    proc_args.extend(proc_form_args[:min(i_f,i_p)])
+    form_args.extend(proc_form_args[:min(i_f,i_p)])
+    return proc_args,form_args
+
 def read_config(conf_file):
     config_parser = SafeConfigParser()
     abspath = os.path.abspath(conf_file)
@@ -98,7 +125,9 @@ def make_pre_parser():
         add_help=False
         )
     conf_parser.add_argument("-c", "--conf", dest="conf",
-                             help="Specify config file")
+                             help="specify config file")
+    conf_parser.add_argument("--pdb",action='store_true', dest="pdb",
+                             help="debug with pdb")
     return conf_parser
 
 
@@ -126,39 +155,32 @@ def make_parser(pre_parser):
                       help='Disable stdout logging')
     parser.add_argument('--version', action='version', version=__version__)
 
+    subparsers = parser.add_subparsers(dest='command',description='choose what to do')
+    tsubparser = subparsers.add_parser('tangle',help='tangle the given document')
+    tsubparser.add_argument('-i',dest='input',help='input file name')
+    tsubparser.add_argument('-o',dest='output',help='output file name')
+    wsubparser = subparsers.add_parser('weave',help='weave the given document')
 
-    subparsers = parser.add_subparsers(dest='command',description='',help='specify a subcommand')
-
-    weaveparser = subparsers.add_parser('weave', help='weave the document')
-
-    weaveparser.add_argument('-i','--input', dest='input',type=argparse.FileType('rt'), nargs=1,
+    wsubparser.add_argument('-i','--input', dest='input',type=argparse.FileType('rt'), nargs=1,
                       required=True,default=[sys.stdin], help='litscript source file')
-    weaveparser.add_argument("-o", "--output", dest="output",
+    wsubparser.add_argument("-o", "--output", dest="output",
                         type=argparse.FileType('wt'), nargs='?',
                       help="output file for weaving")
-    #weaveparser.add_argument("--autofigure", dest='autofigure',
-                      #action="store_true", default=False,
-                      #help="created figures will be saved automatically")
-    weaveparser.add_argument("--figure-directory", dest='figdir',
+    wsubparser.add_argument("--processor", dest="processor",default='python',
+                      help="default code processor")
+    wsubparser.add_argument("--formatter", dest="formatter",default='compact',
+                      help="default code formatter")
+    wsubparser.add_argument("--figure-directory", dest='figdir',
                       action="store", default='_figures',
                       help="path to store produced figures")
-    weaveparser.add_argument("-g","--figure-format", dest="figfmt",
+    wsubparser.add_argument("-g","--figure-format", dest="figfmt",
                       action="store", default="png",
                       help="Figure format for matplolib graphics: Defaults to"
                         "'png' for rst and Sphinx html documents and 'pdf' "
                         "for tex")
-    # pass remaining args on
-    weaveparser.add_argument('--processor',default='python',action='store',nargs='?')
-    weaveparser.add_argument('--formatter',default='compact',action='store',nargs='?')
-    weaveparser.add_argument('--processor-opts',default=[],action='store',nargs='*')
-    weaveparser.add_argument('--formatter-opts',default=[],action='store',nargs='*')
+    # pass remaining largs on
+    #wsubparser.add_argument('--args',default='python',action='store',nargs=argparse.REMAINDER)
 
-    tangleparser = subparsers.add_parser('tangle', help='tangle the document')
-    tangleparser.add_argument('-i', dest='input',type=argparse.FileType('rt'), nargs=1,
-                      required=True, default=[sys.stdin], help='litscript source file')
-    tangleparser.add_argument("-o", "--output", dest="output", nargs='?',
-                        type=argparse.FileType('wt'),
-                      help="Specify the output file for the tangled content.")
     return parser
 
 
@@ -177,122 +199,116 @@ def run():
         main.main(['-w rst','helloworld.lit'])
 
     """
-    if len(sys.argv)>1 and sys.argv[1] and sys.argv[1]=='-d':
-        # Debugging Mode with PDB
-        print('\nEnter Debbuging Mode:\n')
-        from litscript import debug
-        #import pdb
-        #import traceback
-        #try:
+    try:
         main(sys.argv[1:])
-        #except:
-            #print('\n Traceback:\n')
-            #errortype, value, tb = sys.exc_info()
-            #traceback.print_exc()
-            #print('\n Enter post_mortem Debugging:\n')
-            #pdb.post_mortem(tb)
-            #sys.exit(1)
-    else:
-        # silent mode
-        try:
-            main(sys.argv[1:])
-        except LitscriptException as e:
-            print(e)
-            sys.exit(1)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print('\nI\'m sorry but an unhandeled exception occured, '
-            'maybe try the debugging switch "-d" as first argument')
-            sys.exit(1)
-
-    sys.exit(0)
+        sys.exit(0)
+    except LitscriptException as e:
+        print(e)
+        sys.exit(1)
 
 def main(argv):
     ## read configfile argument
     pre_parser = make_pre_parser()
-
     hard_defaults = {"conf":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
-                                              "litscript","config"
-                                             )
-                    }
+        "litscript","config")}
     pre_parser.set_defaults(**hard_defaults)
-    args, remaining_argv = pre_parser.parse_known_args(argv)
+    largs, remaining_argv = pre_parser.parse_known_args(argv)
     # read configfile
-    config_parser = read_config(args.conf)
+    config_parser = read_config(largs.conf)
     if config_parser.has_section('default'):
         soft_defaults = dict(config_parser.items("default"))
     else:
         soft_defaults = {}
+    # import the debugging hook
+    if largs.pdb:
+        print('\nEnter Debbuging Mode:\n')
+        from . import debug
+        # start the main app
+        mainapp(pre_parser,remaining_argv,soft_defaults)
+    else:
+        try:
+            mainapp(pre_parser,remaining_argv,soft_defaults)
+            sys.exit(0)
+        except LitscriptException as e:
+            print(e)
+            sys.exit(1)
+        except Exception:
+            traceback.print_exc()
+            print('\nI\'m sorry but an unhandeled exception occured, '
+            'you can debugg me with "--pdb"')
+            sys.exit(1)
 
+def mainapp(pre_parser,remaining_argv,soft_defaults):
     # parse the rest
     parser = make_parser(pre_parser)
     # set the defaults
     parser.set_defaults(**soft_defaults)
-    # parse remaining args
-    args = vars(parser.parse_args(remaining_argv))
+    # parse remaining largs
+    largs,proc_form_args = parser.parse_known_args(remaining_argv)
     # setup the logger
     logger = logging.getLogger('litscript')
-    if args['quiet']:
+    if largs.quiet:
         handler = logging.NullHandler()
     else:
         handler = ColorizingStreamHandler(sys.stdout)
     formatter = logging.Formatter('%(levelname)s %(name)s: %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-    try:
-        if args['debug']:
-            logger.setLevel('DEBUG')
+    if largs.debug:
+        logger.setLevel('DEBUG')
+    else:
+        if hasattr(logging,largs.loglevel):
+            logger.setLevel(getattr(logging,largs.loglevel.upper()))
         else:
-            logger.setLevel(getattr(logging,args['loglevel'].upper()))
-    except:
-        raise LitscriptException('invalid logging level "{0}"'.format(args['loglevel']))
+            logger.setLevel('WARNING')
+            logger.error('invalid logging level "{0}"'.format(largs.loglevel))
     # my first logging task
-    logger.info('parsed options \n{0}'.format(pprint.pformat(args)))
+    logger.info('parsed options \n{0}'.format(pprint.pformat(vars(largs))))
     # set some paths
-    args['inputpath'], args['basename'] = os.path.split(os.path.abspath(args['input'][0].name))
+    largs.inputpath, largs.basename = os.path.split(os.path.abspath(largs.input[0].name))
     # try to gues output if not specified
-    if not args['output']:
-        if args['command'] == 'weave':
-            args['output'] = guess_outputfile(args['inputpath'],
-                    args['basename'],'rst',force=args['force'])
-        elif args['command'] == 'tangle':
-            args['output'] = guess_outputfile(args['inputpath'],
-                    args['basename'],'py',force=args['force'])
+    if not largs.output:
+        if largs.command == 'weave':
+            largs.output = guess_outputfile(largs.inputpath,
+                    largs.basename,'rst',force=largs.force)
+        elif largs.command == 'tangle':
+            largs.output = guess_outputfile(largs.inputpath,
+                    largs.basename,'py',force=largs.force)
     # default figdir
-    if  args['command'] == 'weave' and not os.path.isabs(args['figdir']):
-        args['outputpath'] = os.path.split(args['output'].name)[0]
-        args['figdir'] = os.path.join(args['outputpath'],args['figdir'])
+    if  largs.command == 'weave' and not os.path.isabs(largs.figdir):
+        largs.outputpath = os.path.split(largs.output.name)[0]
+        largs.figdir = os.path.join(largs.outputpath,largs.figdir)
+    # parse remaining arguments which are passed through to the plugins, but be
+    # careful, don't use any option keys already used in the main app, it will mess
+    # everything completely up
+    proc_args, form_args = parse_through_args(proc_form_args)
     # load the default processors and formatter
     processors.PythonProcessor.register()
     processors.CompactFormatter.register()
     # import plugin modules,if they can register themself on module level
-    if not args['no_plugins']:
-        plugin_moduls = utils.import_plugins(args['plugindir'])
+    if not largs.no_plugins:
+        plugin_moduls = utils.import_plugins(largs.plugindir)
     # create the Litrunner object
-    L = chunks.Litrunner(options=args)
+    L = litrunner.Litrunner(options=largs)
     # register all loaded processors and formatters in the Litrunner object
     for processor in processors.BaseProcessor.plugins.values():
-        L.register_processor(processor)
+        L.register_processor(processor,proc_args)
     for formatter in processors.BaseFormatter.plugins.values():
-        L.register_formatter(formatter)
+        L.register_formatter(formatter,form_args)
     # set default processor and formatter and options
-    L.set_defaults(args['processor'],args['processor_opts'],
-            args['formatter'],args['formatter_opts'])
+    L.set_defaults(largs.processor,proc_args,largs.formatter,form_args)
     # test if Litrunner is ready
     if L.test_readiness():
-        logger.info('Litrunner "{0}" ready'.format(L))
+        logger.info('### Litrunner ready, start processing your document ###')
     # now lets look what we have to do
-    if args['command'] == 'weave':
-        for formatted in L.format(L.weave(L.read(args['input'][0]))):
-            args['output'].write(formatted)
-    elif args['command'] == 'tangle':
-        for formatted in L.tangle(L.read(args['input'][0])):
-            args['output'].write(formatted)
-
-    return
+    if largs.command == 'weave':
+        for formatted in L.format(L.weave(L.read(largs.input[0]))):
+            largs.output.write(formatted)
+    elif largs.command == 'tangle':
+        for formatted in L.tangle(L.read(largs.input[0])):
+            largs.output.write(formatted)
 
 if __name__ == '__main__':
-    main()
+    run()
 
 # vim: set ts=4 sw=4 tw=79 :

@@ -60,15 +60,11 @@ class BaseProcessor(utils.PluginBase):
 
 class PythonProcessor(BaseProcessor):
     name = 'python'
-    options = {'echo':['-e','--echo'],'autoprint':['-a','--autoprint']}
-    aliases = utils.optionconverter(options)
-    parser = utils.LitParser(name)
-    parser.add_argument('-e',action='store_true',help='print source code')
-    parser.add_argument('-a',action='store_true',help='autoprint Numbers')
-    parser.add_argument('--autofigure',action='store_true',help='autosave figures')
-    parser.add_argument('--label',action='store',help='define a chunk label')
+    short_options = 'a'
+    long_options = ['autofigure']
+    defaults = {'a':False,'autofigure':False}
 
-    def __init__(self,options):
+    def __init__(self,appoptions):
         self.init = True
         self.globallocal = {}
         self.stderr = io.StringIO()
@@ -77,7 +73,7 @@ class PythonProcessor(BaseProcessor):
         self.stdout_sys = sys.stdout
         self.stderr_sys = sys.stderr
         self.visitor = LitVisitor()
-        self.options = options
+        self.options = appoptions
         self.plt = False
 
     def get_figdir(self):
@@ -158,6 +154,7 @@ class PythonProcessor(BaseProcessor):
 
         yield hunks.CChunk(chunk,lhunks)
 
+
 class BaseFormatter(utils.PluginBase):
     plugtype = 'formatter'
     plugins = {}
@@ -165,16 +162,10 @@ class BaseFormatter(utils.PluginBase):
 
 class CompactFormatter(BaseFormatter):
     name = 'compact'
-    options = {'linewise':['--linewise'],'autoprint':['--autoprint']}
-    aliases = utils.optionconverter(options)
-    parser = utils.LitParser(name)
-    parser.add_argument('-e',action='store_true',help='print source code')
-    parser.add_argument('-a',action='store_true',help='autoprint Numbers')
-    parser.add_argument('-s',action='store_true',help='hide all code results, except tracebacks')
-    parser.add_argument('--autofigure',action='store_true',help='autosave figures')
-    parser.add_argument('--label',action='store',help='define a chunk label')
-    parser.add_argument('--desc',action='store',default='',
-            help='define a description if needed as for figure')
+    short_options = 'aesl'
+    long_options = ['autofigure','label=','desc=']
+    defaults = {'a':False,'e':True,'s':False,'l':False,
+            'autofigure':False,'label':'','desc':''}
 
     def _decide(self,hunk,options):
         # needs to stay on top to silence output

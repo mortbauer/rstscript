@@ -5,8 +5,8 @@ Hallo Martin
 Hallo Susi
 
 %<<
-from pylab import *
-plot(1,2)
+#from pylab import *
+#plot(1,2)
 print('pfiate')
 a='hhhhhhhh'
 def myfunc():
@@ -19,8 +19,8 @@ d = myfunc
 Hallo Martin 
 Hallo Susi
 %<<pythonn
-from pylab import *
-plot(1,2)
+#from pylab import *
+#plot(1,2)
 print('pfiate')
 a='hhhhhhhh'
 def myfunc():
@@ -28,6 +28,8 @@ def myfunc():
 b = 2*4
 c = myfunc()
 d = myfunc
-%>>--label 'myfigure'
+%>>--label 'myfigure' -x
 
 see also `None_3_1`_
+
+sdlgs
