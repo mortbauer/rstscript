@@ -1,7 +1,32 @@
 #!/usr/bin/env python
 
-from setuptools import setup
+import re
 import litscript
+from setuptools import setup
+
+# from http://cburgmer.posterous.com/pip-requirementstxt-and-setuppy
+def parse_requirements(file_name):
+    requirements = []
+    for line in open(file_name, 'r').read().split('\n'):
+        if re.match(r'(\s*#)|(\s*$)', line):
+            continue
+        if re.match(r'\s*-e\s+', line):
+            requirements.append(re.sub(r'\s*-e\s+.*#egg=(.*)$', r'\1', line))
+        elif re.match(r'\s*-f\s+', line):
+            pass
+        else:
+            requirements.append(line)
+
+    return requirements
+
+
+def parse_dependency_links(file_name):
+    dependency_links = []
+    for line in open(file_name, 'r').read().split('\n'):
+        if re.match(r'\s*-[ef]\s+', line):
+            dependency_links.append(re.sub(r'\s*-[ef]\s+', '', line))
+
+    return dependency_links
 
 setup(name='litscript',
       entry_points = {
@@ -17,7 +42,11 @@ setup(name='litscript',
       license=litscript.__copyright__,
       packages=['litscript'],
       package_data={'litscript':['defaults/litscript.rc.spec']},
-      install_requires=[open('requirements.txt','r').read()],
+      install_requires=parse_requirements('requirements.txt'),
+      dependency_links=parse_dependency_links('requirements.txt'),
+      extras_require = {
+        'autofigure':  ["matplotlib"]
+      },
       provides='litscript',
       classifiers=[
         'Development Status :: Alpha',
