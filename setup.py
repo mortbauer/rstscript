@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import re
-import litscript
+import rstscript
 from setuptools import setup
 
 # from http://cburgmer.posterous.com/pip-requirementstxt-and-setuppy
@@ -28,26 +28,26 @@ def parse_dependency_links(file_name):
 
     return dependency_links
 
-setup(name='litscript',
+setup(name='rstscript',
       entry_points = {
           'console_scripts' :
-              ['litscript = litscript.main:run'
+              ['rstscript = rstscript.main:run'
                ]},
-      version=litscript.__version__,
-      description=litscript.__description__,
-      author=litscript.__author__,
-      author_email=litscript.__author_email__,
-      url=litscript.__url__,
-      download_url=litscript.__url__,
-      license=litscript.__copyright__,
-      packages=['litscript'],
-      package_data={'litscript':['defaults/litscript.rc.spec']},
+      version=rstscript.__version__,
+      description=rstscript.__description__,
+      author=rstscript.__author__,
+      author_email=rstscript.__author_email__,
+      url=rstscript.__url__,
+      download_url=rstscript.__url__,
+      license=rstscript.__copyright__,
+      packages=['rstscript'],
+      package_data={'rstscript':['defaults/conf']},
       install_requires=parse_requirements('requirements.txt'),
       dependency_links=parse_dependency_links('requirements.txt'),
       extras_require = {
         'autofigure':  ["matplotlib"]
       },
-      provides='litscript',
+      provides='rstscript',
       classifiers=[
         'Development Status :: Alpha',
         'Topic :: Text Processing :: Markup',

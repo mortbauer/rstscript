@@ -1,15 +1,13 @@
 import unittest
-import testify
 import os
 import logging
-import numpy
 import ast
-from litscript import chunks
-from litscript import processors
-from litscript import main
+from rstscript import litrunner
+from rstscript import processors
+from rstscript import main
 
 def setup_base_litrunner():
-    L = chunks.Litrunner()
+    L = litrunner.Litrunner()
     L.register_processor(processors.PythonProcessor)
     L.register_formatter(processors.CompactFormatter)
     L.set_defaults(processors.PythonProcessor.name,[],processors.CompactFormatter.name,[])
