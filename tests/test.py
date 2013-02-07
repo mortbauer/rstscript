@@ -8,20 +8,14 @@ from rstscript import main
 
 def setup_base_litrunner():
     L = litrunner.Litrunner()
-    L.register_processor(processors.PythonProcessor)
-    L.register_formatter(processors.CompactFormatter)
+    L.register_processor(processors.PythonProcessor,[])
+    L.register_formatter(processors.CompactFormatter,[])
     L.set_defaults(processors.PythonProcessor.name,[],processors.CompactFormatter.name,[])
     L.test_readiness()
     return L
 
 class LitTester(unittest.TestCase):
     testfile = os.path.join(os.path.split(__file__)[0],'testfile.nw')
-
-    def test_basic_argparsing(self):
-        pre = main.make_pre_parser()
-        parser = main.make_parser(pre)
-        args = parser.parse_args(['-d','weave','-itestfile.nw','--args','-a'])
-        self.assertTrue(args.debug)
 
     def test_readfile(self):
         L = setup_base_litrunner()
@@ -53,7 +47,6 @@ class LitTester(unittest.TestCase):
             string_generator = L.format(cchunk_generator)
             for node in string_generator:
                 print(node)
-
 
     def test_astvisitor(self):
         a = "b= lambda x: x*5 +5\ndef hhh(u):\n    b=19\n    return u*b\nm=hhh(9*4+5)"
