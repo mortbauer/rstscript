@@ -1,5 +1,8 @@
 RstScript
 #########
+
+.. image:: https://travis-ci.org/mortbauer/rstscript.png?branch=master
+
 Markup in `rest`_ and code in `python`_.
 
 RstScript has its own syntax, don't worry it is really tiny, which allows you
