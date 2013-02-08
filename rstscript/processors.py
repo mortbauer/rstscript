@@ -2,18 +2,71 @@ import os
 import io
 import sys
 import ast
+import abc
 import meta
 import traceback
 import logging
 import collections
-import argparse
-import pprint
+import copy
+import getopt
 
-
+import rstscript
 from . import hunks
-from . import utils
 
 logger = logging.getLogger('rstscript.process')
+
+class PluginBase(metaclass=abc.ABCMeta):
+    @property
+    @abc.abstractmethod
+    def name(self):
+        pass
+    @property
+    @abc.abstractmethod
+    def short_options(self):
+        pass
+    @property
+    @abc.abstractmethod
+    def long_options(self):
+        pass
+    @property
+    @abc.abstractmethod
+    def defaults(self):
+        pass
+    @classmethod
+    def register(self):
+        if ('__abstractmethods__' in self.__dict__ and
+                len(self.__dict__['__abstractmethods__'])>0):
+            raise rstscript.RstscriptException('{0} "{1}" from module "{2}"'
+            'is abstract, disabling it'
+            .format(self.plugtype,self.name,self.__module__))
+            return False
+        else:
+            if not hasattr(self.plugins,self.name):
+                self.plugins[self.name] = self
+                logger.info('registered {0} "{1}" from module "{2}"'.
+                        format(self.plugtype,self.name,self.__module__))
+            else:
+                raise rstscript.RstscriptException('{0} "{1}" module file "{2}" is '
+                'already registered,no effect'.
+                format(self.plugtype,self.name,self.__module__))
+            return True
+    @abc.abstractmethod
+    def process(self):
+        pass
+    @classmethod
+    def make_parser(cls,defaults):
+        opts = copy.deepcopy(cls.defaults)
+        def parser(largs,linenumber=0):
+            try:
+                tuples = getopt.getopt(largs,cls.short_options,cls.long_options)
+                if len(tuples[1]):
+                    logger.warning('unhandeled argument "{0}" in linenumber "{1}"'.format(tuples[1],linenumber))
+                opts.update([(x[0].strip('-'),x[1] if x[1] else True) for x in tuples[0]])
+            except getopt.GetoptError as e:
+                logger.warning('{0} in line "{1}"'.format(e,linenumber))
+            return opts
+        opts.update(parser(defaults))
+        return parser
 
 class LitVisitor(ast.NodeTransformer):
     """ special ast visitor, parses code chunks from string into single code
@@ -53,7 +106,7 @@ class LitVisitor(ast.NodeTransformer):
             for child in ast.iter_child_nodes(node):
                 yield from self.visit(child,start_lineno,depth=depth)
 
-class BaseProcessor(utils.PluginBase):
+class BaseProcessor(PluginBase):
     plugtype = 'processor'
     plugins = {}
 
@@ -125,7 +178,7 @@ class PythonProcessor(BaseProcessor):
                 import matplotlib.pyplot
                 self.plt = matplotlib.pyplot
             except:
-                raise utils.LitscriptException('you need matplotlib for using autofigure')
+                raise rstscript.RstscriptException('you need matplotlib for using autofigure')
         for num in self.plt.get_fignums():
             fig = self.plt.figure(num)
             name = '{0}_{1}.png'.format(label,num)
@@ -154,8 +207,7 @@ class PythonProcessor(BaseProcessor):
 
         yield hunks.CChunk(chunk,lhunks)
 
-
-class BaseFormatter(utils.PluginBase):
+class BaseFormatter(PluginBase):
     plugtype = 'formatter'
     plugins = {}
 

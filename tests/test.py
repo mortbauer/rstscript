@@ -5,11 +5,11 @@ import ast
 from rstscript import litrunner
 from rstscript import processors
 from rstscript import main
+from argparse import Namespace
+from io import StringIO
 
 def setup_base_litrunner():
-    L = litrunner.Litrunner()
-    L.register_processor(processors.PythonProcessor,[])
-    L.register_formatter(processors.CompactFormatter,[])
+    L = litrunner.Litrunner(Namespace(toutput=StringIO()))
     L.set_defaults(processors.PythonProcessor.name,[],processors.CompactFormatter.name,[])
     L.test_readiness()
     return L
@@ -38,6 +38,7 @@ class LitTester(unittest.TestCase):
             node_generator = L.tangle(chunk_generator)
             for node in node_generator:
                 print(node)
+        print(L.options.toutput.getvalue())
 
     def test_format(self):
         L = setup_base_litrunner()

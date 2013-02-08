@@ -5,8 +5,10 @@ import shlex
 import pprint
 import logging
 from io import StringIO
+
 from . import hunks
-from . import utils
+from . import processors
+
 
 __all__ = ['read','pre_process','processors','post_process', 'write']
 
@@ -26,13 +28,18 @@ class Litrunner(object):
     Now it should be fine to read or do whatever.
     """
 
-    def __init__(self,options={}) :
+    def __init__(self,app_options) :
         self.processorClasses = {}
         self.processors = {}
         self.formatters = {}
         self.preargparser = {}
         self.postargparser = {}
-        self.options = options
+        self.options = app_options
+        # register all loaded plugins, at least try it
+        for processor in processors.BaseProcessor.plugins.values():
+            self.register_processor(processor)
+        for formatter in processors.BaseFormatter.plugins.values():
+            self.register_formatter(formatter)
 
     def get_figdir(self):
         """ to easily create the figdir on the fly if needed"""
@@ -58,42 +65,30 @@ class Litrunner(object):
     def get_formatter(self,name):
         return self.formatters[name].process
 
-    def register_processor(self,ProcessorClass,defaults):
+    def register_processor(self,ProcessorClass):
         # maybe a bit unusual, but seems to work
         if not ProcessorClass.name in self.processorClasses:
             self.processorClasses[ProcessorClass.name] = ProcessorClass
-            self.preargparser[ProcessorClass.name] = ProcessorClass.make_parser(defaults)
+            self.preargparser[ProcessorClass.name] = ProcessorClass.make_parser(self.options.proc_args)
         else:
             logger.error('processor "{0}" already known'.format(ProcessorClass.name))
 
-    def register_formatter(self,FormatterClass,defaults):
+    def register_formatter(self,FormatterClass):
         # maybe a bit unusual, but seems to work
         if not FormatterClass.name in self.postargparser:
             self.formatters[FormatterClass.name] = FormatterClass()
-            self.postargparser[FormatterClass.name] = FormatterClass.make_parser(defaults)
+            self.postargparser[FormatterClass.name] = FormatterClass.make_parser(self.options.form_args)
         else:
             logger.error('processor "{0}" already known'.format(FormatterClass.name))
 
-    def set_defaults(self,def_proc,def_proc_opts,def_form,def_form_opts):
-        self.def_proc = def_proc
-        #self.def_proc_opts = self.preargparser[def_proc](def_proc_opts,{})
-        self.def_form = def_form
-        #self.def_form_opts = self.postargparser[def_form](def_form_opts,{})
-        #self.processorClasses[def_proc].parser.set_defaults(**self.def_proc_opts)
-        #self.formatters[def_form].parser.set_defaults(**self.def_form_opts)
-        logger.info('default processor "{0}"'.format(self.def_proc))
-        #logger.info('default processor options "{0}"'.format(self.def_proc_opts))
-        logger.info('default formatter "{0}"'.format(self.def_form))
-        #logger.info('default formatter options "{0}"'.format(self.def_form_opts))
-
     def test_readiness(self):
-        if not self.def_proc in self.processorClasses:
+        if not self.options.processor in self.processorClasses:
             logger.error('command "{0}", set as default command is unknown,'
-                    'won\'t do anything'.format(self.def_proc))
+                    'won\'t do anything'.format(self.options.processor))
             return False
-        if not self.def_form in self.formatters:
+        if not self.options.formatter in self.formatters:
             logger.error('command "{0}", set as default formatter is unknown,'
-                    'won\'t do anything'.format(self.def_form))
+                    'won\'t do anything'.format(self.options.formatter))
             return False
         return True
 
@@ -145,10 +140,10 @@ class Litrunner(object):
             return def_command,parsers[def_command]([],linen)
 
         def get_pre_param(line,linen):
-            return get_param(line,self.preargparser,self.def_proc,linen)
+            return get_param(line,self.preargparser,self.options.processor,linen)
 
         def get_post_param(line,linen):
-            return get_param(line,self.postargparser,self.def_form,linen)
+            return get_param(line,self.postargparser,self.options.formatter,linen)
 
         for line in fileobject:
             line_start = line[:token_length]
@@ -225,6 +220,9 @@ class Litrunner(object):
 
 
     def run(self):
+        if not self.test_readiness():
+            logger.error('can\'t start to run, provide propper options')
+            return False
         logger.info('Run Litrunner with options "{0}"'.
                 format(pprint.pformat(vars(self.options))))
         if not self.options.noweave and not self.options.tangle:
@@ -243,4 +241,6 @@ class Litrunner(object):
                 pass
         else:
             logger.info('no job specified, don\'t do anything')
+
+        return True
 
