@@ -6,13 +6,11 @@ import colorama
 import argparse
 import traceback
 import pkgutil
+import rstscript
 
 from rstscript import utils
 from rstscript import litrunner
 from rstscript import processors
-
-from rstscript.__init__ import __version__
-from rstscript.utils import LitscriptException
 
 if sys.version_info[0] >= 3:
     from configparser import SafeConfigParser
@@ -70,7 +68,7 @@ def guess_outputfile(inputpath,basenamein,ext,force=False):
     # test if outputfile existing, won't touch it if it does
     if os.path.exists(outputfile):
         if not force:
-            raise LitscriptException('outputfile "{0}" existing, provide'
+            raise utils.LitscriptException('outputfile "{0}" existing, provide'
             'name explicit or force me'.format(outputfile))
         else:
             logger.warning('will override existing file "{0}"'
@@ -155,27 +153,32 @@ def make_parser(pre_parser):
                       help='Specify the logging level')
     parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,
                       help='Disable stdout logging')
-    parser.add_argument('--version', action='version', version=__version__)
+    parser.add_argument('--version', action='version', version=rstscript.__version__)
 
-    subparsers = parser.add_subparsers(dest='command',description='choose what to do')
-    tsubparser = subparsers.add_parser('tangle',help='tangle the given document')
-    tsubparser.add_argument('-i',dest='input',help='input file name')
-    tsubparser.add_argument('-o',dest='output',help='output file name')
-    wsubparser = subparsers.add_parser('weave',help='weave the given document')
-
-    wsubparser.add_argument('-i','--input', dest='input',type=argparse.FileType('rt'), nargs=1,
+    parser.add_argument('-i','--input', dest='input',type=argparse.FileType('rt'), nargs=1,
                       required=True,default=[sys.stdin], help='rstscript source file')
-    wsubparser.add_argument("-o", "--output", dest="output",
+
+    parser.add_argument('-t',action='store_true',dest='tangle',help='tangle the document')
+
+    parser.add_argument("-ot", dest="toutput",
+                        type=argparse.FileType('wt'), nargs='?',
+                      help="output file for tangling")
+
+    parser.add_argument('--noweave',action='store_true',dest='noweave',
+            help='don\'t weave the document')
+
+    parser.add_argument("-ow", dest="woutput",
                         type=argparse.FileType('wt'), nargs='?',
                       help="output file for weaving")
-    wsubparser.add_argument("--processor", dest="processor",default='python',
+
+    parser.add_argument("--processor", dest="processor",default='python',
                       help="default code processor")
-    wsubparser.add_argument("--formatter", dest="formatter",default='compact',
+    parser.add_argument("--formatter", dest="formatter",default='compact',
                       help="default code formatter")
-    wsubparser.add_argument("--figure-directory", dest='figdir',
+    parser.add_argument("--figure-directory", dest='figdir',
                       action="store", default='_figures',
                       help="path to store produced figures")
-    wsubparser.add_argument("-g","--figure-format", dest="figfmt",
+    parser.add_argument("-g","--figure-format", dest="figfmt",
                       action="store", default="png",
                       help="Figure format for matplolib graphics: Defaults to"
                         "'png' for rst and Sphinx html documents and 'pdf' "
@@ -204,7 +207,7 @@ def run():
     try:
         main(sys.argv[1:])
         sys.exit(0)
-    except LitscriptException as e:
+    except utils.LitscriptException as e:
         print(e)
         sys.exit(1)
 
@@ -249,7 +252,10 @@ def main(argv):
         try:
             mainapp(pre_parser,remaining_argv,soft_defaults)
             sys.exit(0)
-        except LitscriptException as e:
+        except utils.LitscriptException as e:
+            print(e)
+            sys.exit(1)
+        except FileNotFoundError as e:
             print(e)
             sys.exit(1)
         except Exception:
@@ -286,18 +292,6 @@ def mainapp(pre_parser,remaining_argv,soft_defaults):
     logger.info('parsed options \n{0}'.format(pprint.pformat(vars(largs))))
     # set some paths
     largs.inputpath, largs.basename = os.path.split(os.path.abspath(largs.input[0].name))
-    # try to gues output if not specified
-    if not largs.output:
-        if largs.command == 'weave':
-            largs.output = guess_outputfile(largs.inputpath,
-                    largs.basename,'rst',force=largs.force)
-        elif largs.command == 'tangle':
-            largs.output = guess_outputfile(largs.inputpath,
-                    largs.basename,'py',force=largs.force)
-    # default figdir
-    if  largs.command == 'weave' and not os.path.isabs(largs.figdir):
-        largs.outputpath = os.path.split(largs.output.name)[0]
-        largs.figdir = os.path.join(largs.outputpath,largs.figdir)
     # parse remaining arguments which are passed through to the plugins, but be
     # careful, don't use any option keys already used in the main app, it will mess
     # everything completely up
@@ -308,6 +302,20 @@ def mainapp(pre_parser,remaining_argv,soft_defaults):
     # import plugin modules,if they can register themself on module level
     if not largs.no_plugins:
         plugin_moduls = utils.import_plugins(largs.plugindir)
+    # try to gues output if not specified
+    if not largs.noweave and not largs.woutput:
+        largs.woutput = guess_outputfile(largs.inputpath,
+                largs.basename,'rst',force=largs.force)
+    if largs.tangle and not largs.toutput:
+        largs.toutput = guess_outputfile(largs.inputpath,
+                largs.basename,'py',force=largs.force)
+    # set a woutput directory if weaving
+    if not largs.noweave:
+        largs.woutputpath = os.path.split(largs.woutput.name)[0]
+        # set default figdir if it isn't a absolute path
+        if  not os.path.isabs(largs.figdir):
+            largs.figdir = os.path.join(largs.woutputpath,largs.figdir)
+            logger.info('use "{0}" as figdir'.format(largs.figdir))
     # create the Litrunner object
     L = litrunner.Litrunner(options=largs)
     # register all loaded processors and formatters in the Litrunner object
@@ -321,12 +329,7 @@ def mainapp(pre_parser,remaining_argv,soft_defaults):
     if L.test_readiness():
         logger.info('### Litrunner ready, start processing your document ###')
     # now lets look what we have to do
-    if largs.command == 'weave':
-        for formatted in L.format(L.weave(L.read(largs.input[0]))):
-            largs.output.write(formatted)
-    elif largs.command == 'tangle':
-        for formatted in L.tangle(L.read(largs.input[0])):
-            largs.output.write(formatted)
+    L.run()
 
 if __name__ == '__main__':
     run()

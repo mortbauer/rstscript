@@ -2,6 +2,7 @@ import os
 import argparse
 import collections
 import shlex
+import pprint
 import logging
 from io import StringIO
 from . import hunks
@@ -193,17 +194,23 @@ class Litrunner(object):
                 yield hunks.CChunk(chunk,[hunks.Text(chunk.raw)])
             else:
                 logger.error('unsupported chunk type {0}'.
+
                         format(chunk.type))
 
     def tangle(self,chunks):
+        """ takes the unprocessed chunks, how the reader chunks them, only
+        needs information if the chunk is code or text, so minimal processing
+        before. It writes the code chunks unchanged to the tangle output file
+        and  yields the same chunks coming in unchanged."""
         for chunk in chunks:
             if chunk.type == 'code':
-                yield chunk.raw
+                self.options.toutput.write(chunk.raw)
             elif chunk.type == 'text':
-                continue
+                pass
             else:
                 logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
+            yield chunk
 
     def format(self,cchunks):
         for cchunk in cchunks:
@@ -215,4 +222,25 @@ class Litrunner(object):
             else:
                 logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
+
+
+    def run(self):
+        logger.info('Run Litrunner with options "{0}"'.
+                format(pprint.pformat(vars(self.options))))
+        if not self.options.noweave and not self.options.tangle:
+            logger.info('starting to weave the document')
+            # self.options.input is a list of open files returned by argparse,
+            # maybe should be changed in the future
+            for formatted in self.format(self.weave(self.read(self.options.input[0]))):
+                self.options.woutput.write(formatted)
+        elif not self.options.noweave and self.options.tangle:
+            logger.info('starting to weave and tangle the document')
+            for formatted in self.format(self.weave(self.tangle(self.read(self.options.input[0])))):
+                self.options.woutput.write(formatted)
+        elif self.options.noweave and self.options.tangle:
+            logger.info('starting to tangle the document')
+            for formatted in self.tangle(self.read(self.options.input[0])):
+                pass
+        else:
+            logger.info('no job specified, don\'t do anything')
 
