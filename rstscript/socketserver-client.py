@@ -3,7 +3,8 @@ import select
 
 # Connect to the server
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-address = '/tmp/socketserver.sock'
+#address = '/tmp/socketserver.sock'
+address = '.communication.sock'
 s.connect(address)
 s.setblocking(0)
 

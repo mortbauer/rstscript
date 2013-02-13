@@ -1,12 +1,14 @@
 import os
 import sys
 import ipdb
+import time
 import socket
 import logging
 import argparse
 import colorama
 import rstscript
 import threading
+import socketserver
 
 from rstscript import simpledaemon
 
@@ -14,6 +16,17 @@ if sys.version_info[0] >= 3:
     from configparser import SafeConfigParser
 else:
     from ConfigParser import SafeConfigParser
+
+class ThreadedEchoRequestHandler(socketserver.BaseRequestHandler):
+
+    def handle(self):
+        # Echo the back to the client
+        data = self.request.recv(1024)
+        cur_thread = threading.currentThread()
+        response = '%s: %s' % (cur_thread.getName(), data)
+        time.sleep(5)
+        self.request.send(response.encode('utf-8'))
+        return
 
 class ColorizingStreamHandler(logging.StreamHandler):
     # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
@@ -66,59 +79,20 @@ class RstScriptServer(simpledaemon.Daemon):
     logfile = './HelloDaemon.log'
     uid = os.getuid()
     gid = os.getgid()
-    sockfile = '.communication.sock'
     daemonize = True
 
-    def __init__(self,options,parser,logger):
+    def __init__(self,options,defaults,adress='/tmp/rstscript.sock'):
         self.options = options
-        self.parser = parser
-        self.logger = logger
-    def make_socket(self):
-        if os.path.exists( self.sockfile ):
-            self.logger.info('socket already found, won\'t start the server again')
-            return False
-        s = socket.socket( socket.AF_UNIX, socket.SOCK_STREAM )
-        self.logger.info('created socket "{0}"'.format(self.sockfile))
-        try:
-            s.bind(self.sockfile)
-        except socket.error as msg:
-            self.logger.error('bind failed. {0}'.format(msg))
-            return False
-        self.logger.info('bound socket to "{0}"'.format(self.sockfile))
-        return s
+        self.defaults = defaults
+        self.logger = make_logger(options)
+        self.sockfile = adress
+        self.server = socketserver.ThreadingUnixStreamServer(self.sockfile,ThreadedEchoRequestHandler)
+        #self.thread = threading.Thread(target=self.server.serve_forever,daemon=True)
 
-    #Function for handling connections. This will be used to create threads
-    def clientthread(self,conn):
-        #Sending message to connected client
-        self.logger.info('connection "{0}" established'.format(conn))
-        try:
-            #Receiving from client
-            data = conn.recv(1024)
-            self.logger('received "{0}"'.format(data))
-        except socket.BlockingIOError as e:
-            print('BlockingIOError',e)
-        conn.shutdown()
-        ##came out of loop
-        #conn.close()
     def run(self):
-        sock = self.make_socket()
-        if sock:
-            try:
-                #Start listening on socket
-                sock.listen(10)
-                self.logger.info('Socket now listening')
-                #now keep talking with the client
-                while 1:
-                    #wait to accept a connection - blocking call
-                    conn, addr = sock.accept()
-                    #print('Connected with ' + addr[0] + ':' + str(addr[1]))
-
-                    #start new thread takes 1st argument as a funcqion name to be
-                    #run, second is the tuple of arguments to the function.
-                    thread = threading.Thread(target=self.clientthread,args=(conn,))
-                    thread.start()
-            finally:
-                sock.close()
+        self.server.serve_forever()
+        #self.thread.start()
+        #self.logger.info('Server loop running in thread: {0}'.format(self.thread.getName()))
 
 def make_preparser():
     pre_parser = argparse.ArgumentParser()
@@ -180,56 +154,6 @@ def make_logger(debug=False,quiet=False,loglevel='WARNING'):
             logger.error('invalid logging level "{0}"'.format(loglevel))
     return logger
 
-def make_parser(defaults):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--plugin-directory", dest="plugindir",
-                    action="store", default='',
-                    help="Optional directory containing rstscript plugin"
-                        " files.")
-    parser.add_argument('--no-plugins',action='store_true',
-                    help='disable all plugins')
-    parser.add_argument("-d", "--debug", action="store_true", default=False,
-                    help="Run in debugging mode.")
-    parser.add_argument("-f", "--force", action="store_true", default=False,
-                    help="will override existing files without asking")
-    parser.add_argument('-l','--log-level',dest='loglevel', default='WARNING',
-                    help='Specify the logging level')
-    parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,
-                    help='Disable stdout logging')
-    parser.add_argument('--version', action='version', version=rstscript.__version__)
-
-    parser.add_argument('-i','--input', dest='input',type=argparse.FileType('rt'), nargs=1,
-                    required=True,default=[sys.stdin], help='rstscript source file')
-
-    parser.add_argument('-t',action='store_true',dest='tangle',help='tangle the document')
-
-    parser.add_argument("-ot", dest="toutput",
-                        type=argparse.FileType('wt'), nargs='?',
-                    help="output file for tangling")
-
-    parser.add_argument('--noweave',action='store_true',dest='noweave',
-            help='don\'t weave the document')
-
-    parser.add_argument("-ow", dest="woutput",
-                        type=argparse.FileType('wt'), nargs='?',
-                    help="output file for weaving")
-
-    parser.add_argument("--processor", dest="processor",default='python',
-                    help="default code processor")
-    parser.add_argument("--formatter", dest="formatter",default='compact',
-                    help="default code formatter")
-    parser.add_argument("--figure-directory", dest='figdir',
-                    action="store", default='_figures',
-                    help="path to store produced figures")
-    parser.add_argument("-g","--figure-format", dest="figfmt",
-                    action="store", default="png",
-                    help="Figure format for matplolib graphics: Defaults to"
-                        "'png' for rst and Sphinx html documents and 'pdf' "
-                        "for tex")
-    # set the defaults
-    parser.set_defaults(**defaults)
-    return parser
-
 def main(argv=None):
     if not argv:
         argv = sys.argv[1:]
@@ -241,11 +165,8 @@ def main(argv=None):
         soft_defaults = dict(config_parser.items("default"))
     else:
         soft_defaults = {}
-    # parse the rest
-    parser = make_parser(soft_defaults)
     # setup the logger
-    logger = make_logger(options)
-    rstscriptserver = RstScriptServer(options,parser,logger)
+    rstscriptserver = RstScriptServer(options,soft_defaults)
     rstscriptserver.start()
 
 if __name__ == '__main__':
