@@ -65,6 +65,171 @@ class ColorizingStreamHandler(logging.StreamHandler):
         except KeyError:
             return message
 
+class LitManager(object):
+
+    def _make_preparser(self):
+        pre_parser = argparse.ArgumentParser(add_help=False)
+        pre_parser.add_argument("-c", "--conf", dest="conf",
+                                help="specify config file")
+        pre_parser.add_argument("--pdb",action='store_true', dest="pdb",
+                                help="debug with pdb")
+
+        hard_defaults = {"conf":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
+            "rstscript","config"),
+            "conf.d":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
+            "rstscript"),
+            "plugindir":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
+            "rstscript","plugindir")}
+        # create default configuration directory and files if not there
+        if not os.path.exists(hard_defaults['conf.d']):
+            os.mkdir(hard_defaults['conf.d'])
+            print('created configuration directory "{0}"'
+                    .format(hard_defaults['conf.d']))
+        if not os.path.exists(hard_defaults['plugindir']):
+            os.mkdir(hard_defaults['plugindir'])
+            print('created plugin directory "{0}"'
+                    .format(hard_defaults['plugindir']))
+        if not os.path.exists(hard_defaults['conf']):
+            with open(hard_defaults['conf'],'wb') as f:
+                f.write(pkgutil.get_data(__name__, 'defaults/config'))
+            print('created configuration file "{0}"'
+                    .format(hard_defaults['conf']))
+        pre_parser.set_defaults(**hard_defaults)
+        return pre_parser
+
+    def _make_parser(self,pre_parser,soft_defaults):
+        parser = argparse.ArgumentParser(
+        parents=[pre_parser],
+        )
+        parser.add_argument("-p", "--plugin-directory", dest="plugindir",
+                        action="store", default='',
+                        help="Optional directory containing rstscript plugin"
+                            " files.")
+        parser.add_argument('--no-plugins',action='store_true',
+                        help='disable all plugins')
+        parser.add_argument("-d", "--debug", action="store_true", default=False,
+                        help="Run in debugging mode.")
+        parser.add_argument("-f", "--force", action="store_true", default=False,
+                        help="will override existing files without asking")
+        parser.add_argument('-l','--log-level',dest='loglevel', default='WARNING',
+                        help='Specify the logging level')
+        parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,
+                        help='Disable stdout logging')
+        parser.add_argument('--version', action='version', version=rstscript.__version__)
+
+        parser.add_argument('-i','--input', dest='input',type=argparse.FileType('rt'), nargs=1,
+                        required=True,default=[sys.stdin], help='rstscript source file')
+
+        parser.add_argument('-t',action='store_true',dest='tangle',help='tangle the document')
+
+        parser.add_argument("-ot", dest="toutput",
+                            type=argparse.FileType('wt'), nargs='?',
+                        help="output file for tangling")
+
+        parser.add_argument('--noweave',action='store_true',dest='noweave',
+                help='don\'t weave the document')
+
+        parser.add_argument("-ow", dest="woutput",
+                            type=argparse.FileType('wt'), nargs='?',
+                        help="output file for weaving")
+
+        parser.add_argument("--processor", dest="processor",default='python',
+                        help="default code processor")
+        parser.add_argument("--formatter", dest="formatter",default='compact',
+                        help="default code formatter")
+        parser.add_argument("--figure-directory", dest='figdir',
+                        action="store", default='_figures',
+                        help="path to store produced figures")
+        parser.add_argument("-g","--figure-format", dest="figfmt",
+                        action="store", default="png",
+                        help="Figure format for matplolib graphics: Defaults to"
+                            "'png' for rst and Sphinx html documents and 'pdf' "
+                            "for tex")
+        # set the defaults
+        parser.set_defaults(**soft_defaults)
+        return parser
+
+    def _make_configparser(self,conf_file):
+    config_parser = SafeConfigParser()
+    abspath = os.path.abspath(conf_file)
+    if os.path.exists(abspath):
+        config_parser.read([abspath])
+        return config_parser
+    else:
+        logger.warning('The given path: %s does not exist' % abspath)
+        return config_parser
+
+    def _make_logger(self,app_options):
+        logger = logging.getLogger('rstscript.app')
+        # setup the app logger
+        if app_options.quiet:
+            handler = logging.NullHandler()
+        else:
+            handler = ColorizingStreamHandler(sys.stdout)
+        formatter = logging.Formatter('%(levelname)s %(name)s: %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        if app_options.debug:
+            logger.setLevel('DEBUG')
+        else:
+            if hasattr(logging,app_options.loglevel):
+                logger.setLevel(getattr(logging,app_options.loglevel.upper()))
+            else:
+                logger.setLevel('WARNING')
+                logger.error('invalid logging level "{0}"'.format(app_options.loglevel))
+        return logger
+
+
+    def __init__(self):
+        self.logger = logging.getLogger('rstscript')
+        self.logger.setLevel('INFO')
+        # parse the arguments regarding the configuration
+        pre_parser = self._make_preparser()
+        app_options, remaining_argv = pre_parser.parse_known_args(argv)
+        # read configfile
+        config_parser = self._make_configparser(app_options.conf)
+        if config_parser.has_section('default'):
+            soft_defaults = dict(config_parser.items("default"))
+        else:
+            soft_defaults = {}
+        # parse the rest
+        parser = self._make_parser(pre_parser,soft_defaults)
+        # parse remaining app_options
+        app_options,proc_form_args = parser.parse_known_args(remaining_argv)
+        # setup the logger
+        logger = self._make_logger(app_options)
+        # my first logging task
+        logger.info('parsed options \n{0}'.format(pprint.pformat(vars(app_options))))
+        # set some paths
+        app_options.inputpath, app_options.basename = os.path.split(os.path.abspath(app_options.input[0].name))
+        # parse remaining arguments which are passed through to the plugins, but be
+        # careful, don't use any option keys already used in the main app, it will mess
+        # everything completely up
+        app_options.proc_args, app_options.form_args = parse_through_args(proc_form_args)
+        # load the default processors and formatter
+        processors.PythonProcessor.register()
+        processors.CompactFormatter.register()
+        # import plugin modules,if they can register themself on module level
+        if not app_options.no_plugins:
+            plugin_moduls = import_plugins(app_options.plugindir)
+        # try to gues output if not specified
+        if not app_options.noweave and not app_options.woutput:
+            app_options.woutput = guess_outputfile(app_options.inputpath,
+                    app_options.basename,'rst',force=app_options.force)
+        if app_options.tangle and not app_options.toutput:
+            app_options.toutput = guess_outputfile(app_options.inputpath,
+                    app_options.basename,'py',force=app_options.force)
+        # set a woutput directory if weaving
+        if not app_options.noweave:
+            app_options.woutputpath = os.path.split(app_options.woutput.name)[0]
+            # set default figdir if it isn't a absolute path
+            if  not os.path.isabs(app_options.figdir):
+                app_options.figdir = os.path.join(app_options.woutputpath,app_options.figdir)
+                logger.info('use "{0}" as figdir'.format(app_options.figdir))
+
+
+            # parse the main arguments
+
 def import_plugins(plugindir):
     if plugindir:
         sys.path.insert(0, plugindir)

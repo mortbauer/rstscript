@@ -9,9 +9,7 @@ from argparse import Namespace
 from io import StringIO
 
 def setup_base_litrunner():
-    L = litrunner.Litrunner(Namespace(toutput=StringIO()))
-    L.set_defaults(processors.PythonProcessor.name,[],processors.CompactFormatter.name,[])
-    L.test_readiness()
+    L = litrunner.Litrunner(Namespace(toutput=StringIO(),processor='python',formatter='compact'))
     return L
 
 class LitTester(unittest.TestCase):
