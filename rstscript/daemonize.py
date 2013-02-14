@@ -6,14 +6,18 @@ import time
 import atexit
 import signal
 
+class DaemonizerException(Exception):
+    pass
+
 class Daemon:
     """A generic daemon class.
 
     Usage: subclass the daemon class and override the run() method."""
 
-    def __init__(self, pidfile,logger):
+    def __init__(self, pidfile,logger,workingdir):
         self.pidfile = pidfile
         self.logger = logger
+        self.workingdir = workingdir
 
     def daemonize(self):
         """Deamonize class. UNIX double fork mechanism."""
@@ -29,7 +33,12 @@ class Daemon:
         if not pid:
             self.logger.info('fork #1 done')
             # decouple from parent environment
-            os.chdir('/')
+            try:
+                os.chdir(self.workingdir)
+            except:
+                os.chdir('/')
+                self.logger.warning('couldn\'t change to specified working directory "{0}"'
+                        .format(self.workingdir))
             os.setsid()
             os.umask(0)
 
@@ -56,27 +65,29 @@ class Daemon:
             os.dup2(so.fileno(), sys.stdout.fileno())
             os.dup2(se.fileno(), sys.stderr.fileno())
 
-            # write pidfile
-            atexit.register(os.remove,self.pidfile)
-
-            pid = str(os.getpid())
-            with open(self.pidfile,'w+') as f:
-                f.write(pid + '\n')
-
             self.logger.info('redirection of std\'s done')
+
+            # write pidfile
+            with open(self.pidfile,'w+') as f:
+                f.write(str(os.getpid())+ '\n')
+            # if daemon process end from alone we want the pid file removed
+            # therefore let's register with atexit
+            atexit.register(os.remove,self.pidfile)
+            self.logger.info('wrote pid to "{0}"'.format(self.pidfile))
             self.run()
 
     def start(self):
-        """Starts the run method daemonized
+        """Starts a daemonized process
 
-        returnes True for the parent process on success
+        returns the pid of the child for the parent process on success
         and False on fail and for the child process
         """
 
         # Check for a pidfile to see if the daemon already runs
         if os.path.exists(self.pidfile):
-            self.logger.warning("pidfile {0} already exist".format(self.pidfile))
-            return False
+            msg = "pidfile {0} already exist".format(self.pidfile)
+            self.logger.warning(msg)
+            raise DaemonizerException(msg)
         else:
             # Start the daemon
             pid = os.getpid()
@@ -87,11 +98,10 @@ class Daemon:
                 # launched
                 while not os.path.exists(self.pidfile):
                     time.sleep(0.01)
+                child_pid = open(self.pidfile,'r').read()
                 self.logger.info('run succesfully daemonized, running on pid "{0}"'.
-                        format(open(self.pidfile,'r').read()))
-                return True
-            else:
-                return False
+                        format(child_pid))
+                return child_pid
 
     def stop(self):
         """Stop the daemon."""
@@ -104,10 +114,11 @@ class Daemon:
             pid = None
 
         if not pid:
-            self.logger.warning("pidfile {0} does not exist".format(self.pidfile))
+            msg = "pidfile {0} does not exist".format(self.pidfile)
+            self.logger.warning(msg)
             # though we hadn't to do anything the daemon seems done so we can
             # start a new one or whatever
-            return True
+            raise DaemonizerException(msg)
         else:
             # Try killing the daemon process
             try:
@@ -128,4 +139,43 @@ class Daemon:
 
         It will be called after the process has been daemonized by
         start() or restart()."""
+
+
+class SocketServerDaemon(Daemon):
+
+    def __init__(self,socketfile,pidfile,logger,handler,workingdir):
+        self.logger = logger
+        self.sockfile = socketfile
+        self.pidfile = pidfile
+        self.started = False
+        self.workingdir = workingdir
+        self.handler = handler
+
+    def start(self):
+        # Check for a sockfile to see if the daemon already runs
+        if os.path.exists(self.sockfile):
+            msg = "sockfile {0} already exist".format(self.sockfile)
+            self.logger.warning(msg)
+            raise DaemonizerException(msg)
+        else:
+            # register cleanup on exit
+            if super().start():
+                pass
+
+    def stop(self):
+        # Check for a sockfile to see if the daemon already runs
+        if not os.path.exists(self.sockfile):
+            msg = "sockfile {0} doesn\'t exist".format(self.sockfile)
+            self.logger.warning(msg)
+            raise DaemonizerException(msg)
+        else:
+            # register cleanup on exit
+            if super().stop():
+                os.remove(self.sockfile)
+
+    def run(self):
+        self.server = socketserver.ThreadingUnixStreamServer(self.sockfile,self.handler)
+        atexit.register(os.remove,self.sockfile)
+        self.server.serve_forever()
+
 
