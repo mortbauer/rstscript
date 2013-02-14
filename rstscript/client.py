@@ -7,13 +7,28 @@ import rstscript
 
 
 def make_parser():
+    default_configdir = os.path.join(os.getenv("XDG_CONFIG_HOME",''),"rstscript")
     parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--plugin-directory", dest="plugindir",
-                    action="store", default='',
-                    help="Optional directory containing rstscript plugin"
-                        " files.")
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--start',action='store_true',help='start the server')
+    group.add_argument('--stop',action='store_true',help='stop the server')
+
+    parser.add_argument("-c", "--conf", dest="conf",
+            default=os.path.join(default_configdir,'config.yml'),
+            help="specify config file")
+    parser.add_argument("--pdb",action='store_true', dest="pdb",
+            help="debug with pdb")
+    parser.add_argument('--plugindir',action='store',
+            default=os.path.join(default_configdir,'plugins'),
+            help='specify the plugin directory')
+    parser.add_argument('--no-plugins',action='store_true',
+            help='disable all plugins')
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                     help="Run in debugging mode.")
+    parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,
+                    help='Disable stdout logging')
+
     parser.add_argument("-f", "--force", action="store_true", default=False,
                     help="will override existing files without asking")
     parser.add_argument('-l','--log-level',dest='loglevel', default='WARNING',
@@ -54,11 +69,49 @@ def make_parser():
 # Connect to the server
 #address = '/tmp/socketserver.sock'
 
+def make_initial_setup(configfilename):
+    """ copies the default config file
+    should only be run if the "configfilename is not existent
+    """
+    print('The configuration file "{0}" is not existent'.format(configfilename))
+    userinput = input('should I create it with the default values (y/n): ').lower()
+    i = 0
+    while not userinput in ['y','n'] and i < 5:
+        userinput = input('type exactly "y" for yes or "n" for no: ').lower()
+        i += 1
+    if not userinput in ['y','n']:
+        print('are you nuts, I said exactly "y" or "n", I will give up')
+        return False
+    elif userinput == 'y':
+        with open(configfilename,'wb') as f:
+            f.write(pkgutil.get_data(__name__,'defaults/config.yml'))
+        return True
+    elif userinput == 'n':
+        return False
 
-def start_server(adress='/tmp/rstscript.sock'):
-    from rstscript import server
-    rstscriptserver = server.RstScriptServer({},{})
-    rstscriptserver.start()
+def main(argv=None):
+    # read deafult configs
+    configs = yaml.load(pkgutil.get_data(__name__,'defaults/config.yml'))
+    if not argv:
+        argv = sys.argv[1:]
+    # parse the arguments
+    parser = make_parser()
+    configs.update(vars(parser.parse_args(argv)))
+    # read configfile
+    if not os.path.exists(configs['conf']):
+        make_initial_setup(configs['conf'])
+    else:
+        configs.update(yaml.load(open(configs['conf'],'r')))
+    # create the server object
+    rstscriptserver = RstScriptServer(**configs)
+    if configs['start']:
+        rstscriptserver.start()
+    elif configs['stop']:
+        rstscriptserver.stop()
+    elif configs['restart']:
+        rstscriptserver.stop()
+        rstscriptserver.start()
+
 
 def main(argv=None,address='/tmp/rstscript.sock'):
     # invoked from commandline or through import

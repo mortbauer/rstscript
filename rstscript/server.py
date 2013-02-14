@@ -85,6 +85,7 @@ def make_preparser():
     group.add_argument('--restart',action='store_true',help='restart the server')
     return parser
 
+
 def make_logger(logfile=None,debug=False,quiet=False,loglevel='WARNING',logmaxmb=0,logbackups=1):
     logger = logging.getLogger('rstscript.server')
     # setup the app logger
