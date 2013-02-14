@@ -1,21 +1,16 @@
 import os
 import sys
-import ipdb
 import time
-import socket
+import yaml
+import ipdb
 import logging
+import pkgutil
 import argparse
-import colorama
 import rstscript
 import threading
 import socketserver
 
 from rstscript import simpledaemon
-
-if sys.version_info[0] >= 3:
-    from configparser import SafeConfigParser
-else:
-    from ConfigParser import SafeConfigParser
 
 class ThreadedEchoRequestHandler(socketserver.BaseRequestHandler):
 
@@ -28,66 +23,39 @@ class ThreadedEchoRequestHandler(socketserver.BaseRequestHandler):
         self.request.send(response.encode('utf-8'))
         return
 
-class ColorizingStreamHandler(logging.StreamHandler):
-    # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
-    # Tweaked to use colorama for the coloring
-
-    """
-    Sets up a colorized logger, which is used ltscript
-    """
-    color_map = {
-        logging.INFO: colorama.Fore.WHITE,
-        logging.DEBUG: colorama.Style.DIM + colorama.Fore.CYAN,
-        logging.WARNING: colorama.Fore.YELLOW,
-        logging.ERROR: colorama.Fore.RED,
-        logging.CRITICAL: colorama.Back.RED,
-        logging.FATAL: colorama.Back.RED,
-    }
-
-    def __init__(self, stream, color_map=None):
-        logging.StreamHandler.__init__(self,
-                                       colorama.AnsiToWin32(stream).stream)
-        if color_map is not None:
-            self.color_map = color_map
-
-    @property
-    def is_tty(self):
-        isatty = getattr(self.stream, 'isatty', None)
-        return isatty and isatty()
-
-    def format(self, record):
-        message = logging.StreamHandler.format(self, record)
-        if self.is_tty:
-            # Don't colorize a traceback
-            parts = message.split('\n', 1)
-            parts[0] = self.colorize(parts[0], record)
-            message = '\n'.join(parts)
-        return message
-
-    def colorize(self, message, record):
-        try:
-            return (self.color_map[record.levelno] + message +
-                    colorama.Style.RESET_ALL)
-        except KeyError:
-            return message
-
 class RstScriptServer(simpledaemon.Daemon):
-    logmaxmb = 0
-    logbackups = 0
-    loglevel = 'info'
-    pidfile = './HelloDaemon.pid'
-    logfile = './HelloDaemon.log'
-    uid = os.getuid()
-    gid = os.getgid()
-    daemonize = True
 
-    def __init__(self,options,defaults,adress='/tmp/rstscript.sock'):
-        self.options = options
-        self.defaults = defaults
-        self.logger = make_logger(options)
-        self.sockfile = adress
-        self.server = socketserver.ThreadingUnixStreamServer(self.sockfile,ThreadedEchoRequestHandler)
+    def __init__(self,socketfile=None,pidfile=None,logfile=None,
+            debug=False,quiet=False,loglevel='info',logmaxmb=0,
+            foreground=False,uid=os.getuid(),gid=os.getgid(),**args):
+        self.uid = uid
+        self.gid = gid
+        self.logmaxmb = logmaxmb
+        self.daemonize = not foreground
+        self.logger = make_logger(logfile=logfile,debug=debug,quiet=quiet,loglevel=loglevel)
+        self.loglevel = loglevel
+        self.logfile = logfile
+        self.sockfile = socketfile
+        self.pidfile = pidfile
+        self.started = False
         #self.thread = threading.Thread(target=self.server.serve_forever,daemon=True)
+
+    def start(self):
+        for f in (self.pidfile,self.sockfile):
+            if os.path.exists(f):
+                self.started = True
+                self.logger.info('server seems already running, found "{0}"'.format(f))
+                break
+        if not self.started:
+            self.server = socketserver.ThreadingUnixStreamServer(self.sockfile,ThreadedEchoRequestHandler)
+            super(self.__class__,self).start()
+
+    def stop(self):
+        if super(self.__class__,self).stop():
+            if os.path.exists(self.sockfile):
+                os.remove(self.sockfile)
+            if os.path.exists(self.pidfile):
+                os.remove(self.pidfile)
 
     def run(self):
         self.server.serve_forever()
@@ -95,55 +63,44 @@ class RstScriptServer(simpledaemon.Daemon):
         #self.logger.info('Server loop running in thread: {0}'.format(self.thread.getName()))
 
 def make_preparser():
-    pre_parser = argparse.ArgumentParser()
-    pre_parser.add_argument("-c", "--conf", dest="conf",
-                            help="specify config file")
-    pre_parser.add_argument("--pdb",action='store_true', dest="pdb",
-                            help="debug with pdb")
+    default_configdir = os.path.join(os.getenv("XDG_CONFIG_HOME",''),"rstscript")
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group()
+    parser.add_argument("-c", "--conf", dest="conf",
+            default=os.path.join(default_configdir,'config.yml'),
+            help="specify config file")
+    parser.add_argument("--pdb",action='store_true', dest="pdb",
+            help="debug with pdb")
+    parser.add_argument('--plugindir',action='store',
+            default=os.path.join(default_configdir,'plugins'),
+            help='specify the plugin directory')
+    parser.add_argument('--no-plugins',action='store_true',
+            help='disable all plugins')
+    parser.add_argument("-d", "--debug", action="store_true", default=False,
+                    help="Run in debugging mode.")
+    parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,
+                    help='Disable stdout logging')
+    group.add_argument('--start',action='store_true',help='start the server')
+    group.add_argument('--stop',action='store_true',help='stop the server')
+    group.add_argument('--restart',action='store_true',help='restart the server')
+    return parser
 
-    hard_defaults = {"conf":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
-        "rstscript","config"),
-        "conf.d":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
-        "rstscript"),
-        "plugindir":os.path.join(os.getenv("XDG_CONFIG_HOME",''),
-        "rstscript","plugindir")}
-    # create default configuration directory and files if not there
-    if not os.path.exists(hard_defaults['conf.d']):
-        os.mkdir(hard_defaults['conf.d'])
-        print('created configuration directory "{0}"'
-                .format(hard_defaults['conf.d']))
-    if not os.path.exists(hard_defaults['plugindir']):
-        os.mkdir(hard_defaults['plugindir'])
-        print('created plugin directory "{0}"'
-                .format(hard_defaults['plugindir']))
-    if not os.path.exists(hard_defaults['conf']):
-        with open(hard_defaults['conf'],'wb') as f:
-            f.write(pkgutil.get_data(__name__, 'defaults/config'))
-        print('created configuration file "{0}"'
-                .format(hard_defaults['conf']))
-    pre_parser.set_defaults(**hard_defaults)
-    return pre_parser
-
-def make_configparser(conf_file):
-    config_parser = SafeConfigParser()
-    abspath = os.path.abspath(conf_file)
-    if os.path.exists(abspath):
-        config_parser.read([abspath])
-        return config_parser
-    else:
-        logger.warning('The given path: %s does not exist' % abspath)
-        return config_parser
-
-def make_logger(debug=False,quiet=False,loglevel='WARNING'):
+def make_logger(logfile=None,debug=False,quiet=False,loglevel='WARNING',logmaxmb=0,logbackups=1):
     logger = logging.getLogger('rstscript.server')
     # setup the app logger
-    if quiet:
-        handler = logging.NullHandler()
+    handlers = []
+    if not logmaxmb:
+        handlers.append(logging.FileHandler(logfile))
     else:
-        handler = ColorizingStreamHandler(sys.stdout)
-    formatter = logging.Formatter('%(levelname)s %(name)s: %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+        from logging.handlers import RotatingFileHandler
+        handlers.append(RotatingFileHandler(logfile, maxBytes=logmaxmb * 1024 * 1024, backupCount=logbackups))
+    if not quiet:
+        # also log to stderr
+        handlers.append(logging.StreamHandler())
+    formatter = logging.Formatter('%(levelname)s %(asctime)s %(name)s: %(message)s')
+    for handler in handlers:
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
     if debug:
         logger.setLevel('DEBUG')
     else:
@@ -154,20 +111,49 @@ def make_logger(debug=False,quiet=False,loglevel='WARNING'):
             logger.error('invalid logging level "{0}"'.format(loglevel))
     return logger
 
+def make_initial_setup(configfilename):
+    """ copies the default config file
+    should only be run if the "configfilename is not existent
+    """
+    print('The configuration file "{0}" is not existent'.format(configfilename))
+    userinput = input('should I create it with the default values (y/n): ').lower()
+    i = 0
+    while not userinput in ['y','n'] and i < 5:
+        userinput = input('type exactly "y" for yes or "n" for no: ').lower()
+        i += 1
+    if not userinput in ['y','n']:
+        print('are you nuts, I said exactly "y" or "n", I will give up')
+        return False
+    elif userinput == 'y':
+        with open(configfilename,'wb') as f:
+            f.write(pkgutil.get_data(__name__,'defaults/config.yml'))
+        return True
+    elif userinput == 'n':
+        return False
+
 def main(argv=None):
+    # read deafult configs
+    configs = yaml.load(pkgutil.get_data(__name__,'defaults/config.yml'))
     if not argv:
         argv = sys.argv[1:]
+    # parse the arguments
     pre_parser = make_preparser()
-    options = pre_parser.parse_args(argv)
+    configs.update(vars(pre_parser.parse_args(argv)))
     # read configfile
-    config_parser = make_configparser(options.conf)
-    if config_parser.has_section('default'):
-        soft_defaults = dict(config_parser.items("default"))
+    if not os.path.exists(configs['conf']):
+        make_initial_setup(configs['conf'])
     else:
-        soft_defaults = {}
-    # setup the logger
-    rstscriptserver = RstScriptServer(options,soft_defaults)
-    rstscriptserver.start()
+        configs.update(yaml.load(open(configs['conf'],'r')))
+    # create the server object
+    rstscriptserver = RstScriptServer(**configs)
+    if configs['start']:
+        rstscriptserver.start()
+    elif configs['stop']:
+        rstscriptserver.stop()
+    elif configs['restart']:
+        rstscriptserver.stop()
+        rstscriptserver.start()
+
 
 if __name__ == '__main__':
     main()

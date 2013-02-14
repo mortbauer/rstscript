@@ -11,7 +11,6 @@ except ImportError:
     import ConfigParser as configparser
 import errno
 import grp
-import logging
 import os
 import pwd
 import signal
@@ -25,7 +24,7 @@ class Daemon(object):
     def setup_root(self):
         """Override to perform setup tasks with root privileges.
 
-        When this is called, logging has been initialized, but the
+        When this is called, self.logger has been initialized, but the
         terminal has not been detached and the pid of the long-running
         process is not yet known.
         """
@@ -65,7 +64,7 @@ class Daemon(object):
         # processes don't write to the same log file, but before
         # setup_root so that work done with root privileges can be
         # logged.
-        self.start_logging()
+        #self.start_logging()
         try:
             # - set up with root privileges
             self.setup_root()
@@ -82,24 +81,24 @@ class Daemon(object):
             if self.daemonize:
                 daemonize()
         except:
-            logging.exception("failed to start due to an exception")
+            self.logger.exception("failed to start due to an exception")
             raise
 
         # - write_pid must come after daemonizing since the pid of the
         # long running process is known only after daemonizing
         self.write_pid()
         try:
-            logging.info("started")
+            self.logger.info("started")
             try:
                 self.run()
             except (KeyboardInterrupt, SystemExit):
                 pass
             except:
-                logging.exception("stopping with an exception")
+                self.logger.exception("stopping with an exception")
                 raise
         finally:
             self.remove_pid()
-            logging.info("stopped")
+            self.logger.info("stopped")
 
     def stop(self):
         """Stop the running process"""
@@ -108,27 +107,27 @@ class Daemon(object):
             os.kill(pid, signal.SIGTERM)
             # wait for a moment to see if the process dies
             for n in range(10):
-                time.sleep(0.25)
+                time.sleep(0.1)
                 try:
                     # poll the process state
                     os.kill(pid, 0)
                 except OSError as why:
                     if why.errno == errno.ESRCH:
                         # process has died
-                        break
+                        self.logger.info("killed the daemon")
+                        return True
                     else:
                         raise
-            else:
-                sys.exit("pid %d did not die" % pid)
         else:
-            sys.exit("not running")
+            self.logger.error("daemon seems down")
+            return True
 
     def prepare_dirs(self):
         """Ensure the log and pid file directories exist and are writable"""
         for fn in (self.pidfile, self.logfile):
             if not fn:
                 continue
-            parent = os.path.dirname(fn)
+            parent = os.path.dirname(os.path.abspath(fn))
             if not os.path.exists(parent):
                 os.makedirs(parent)
                 self.chown(parent)
@@ -164,28 +163,28 @@ class Daemon(object):
                 (repr(fn), uid, gid, err.errno, err.strerror))
 
     def start_logging(self):
-        """Configure the logging module"""
+        """Configure the self.logger module"""
         try:
             level = int(self.loglevel)
         except ValueError:
-            level = int(logging.getLevelName(self.loglevel.upper()))
+            level = int(self.logger.getLevelName(self.loglevel.upper()))
 
         handlers = []
         if self.logfile:
             if not self.logmaxmb:
-                handlers.append(logging.FileHandler(self.logfile))
+                handlers.append(self.logger.FileHandler(self.logfile))
             else:
-                from logging.handlers import RotatingFileHandler
+                from self.logger.handlers import RotatingFileHandler
                 handlers.append(RotatingFileHandler(self.logfile, maxBytes=self.logmaxmb * 1024 * 1024, backupCount=self.logbackups))
             self.chown(self.logfile)
         if not self.daemonize:
             # also log to stderr
-            handlers.append(logging.StreamHandler())
+            handlers.append(self.logger.StreamHandler())
 
-        log = logging.getLogger()
+        log = self.logger.getLogger()
         log.setLevel(level)
         for h in handlers:
-            h.setFormatter(logging.Formatter(
+            h.setFormatter(self.logger.Formatter(
                 "%(asctime)s %(process)d %(levelname)s %(message)s"))
             log.addHandler(h)
 

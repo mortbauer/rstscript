@@ -12,16 +12,12 @@ def make_parser():
                     action="store", default='',
                     help="Optional directory containing rstscript plugin"
                         " files.")
-    parser.add_argument('--no-plugins',action='store_true',
-                    help='disable all plugins')
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                     help="Run in debugging mode.")
     parser.add_argument("-f", "--force", action="store_true", default=False,
                     help="will override existing files without asking")
     parser.add_argument('-l','--log-level',dest='loglevel', default='WARNING',
                     help='Specify the logging level')
-    parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,
-                    help='Disable stdout logging')
     parser.add_argument('--version', action='version', version=rstscript.__version__)
 
     parser.add_argument('-i','--input', dest='input',type=argparse.FileType('rt'), nargs=1,

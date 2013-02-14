@@ -9,6 +9,7 @@ __description__ = "Scientific reports with embedded python computations with reS
 __url__ = "https://github.com/mortbauer/rstscript"
 __license__ = "Licensed under the GNU GPL v3+."
 
+
 class RstscriptException(Exception):
     """Base class for exceptions in this module."""
     pass
