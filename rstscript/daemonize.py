@@ -24,11 +24,10 @@ class Daemon:
             self.logger.error('fork #1 failed: {0}\n'.format(err))
             sys.exit(1)
 
-        self.logger.info('fork #1 done')
-
         # instead of exiting the parent process, just shield the further
         # daemonizing from it, so it can continue in foreground
         if not pid:
+            self.logger.info('fork #1 done')
             # decouple from parent environment
             os.chdir('/')
             os.setsid()
@@ -65,11 +64,14 @@ class Daemon:
                 f.write(pid + '\n')
 
             self.logger.info('redirection of std\'s done')
+            self.run()
 
     def start(self):
         """Starts the run method daemonized
 
-        returnes True to the parent process on success """
+        returnes True for the parent process on success
+        and False on fail and for the child process
+        """
 
         # Check for a pidfile to see if the daemon already runs
         if os.path.exists(self.pidfile):
@@ -77,9 +79,19 @@ class Daemon:
             return False
         else:
             # Start the daemon
+            pid = os.getpid()
             self.daemonize()
-            self.run()
-            return True
+            # only execute for parent
+            if os.getpid() == pid:
+                # wait until pidfile is written, which means that the daemon is
+                # launched
+                while not os.path.exists(self.pidfile):
+                    time.sleep(0.01)
+                self.logger.info('run succesfully daemonized, running on pid "{0}"'.
+                        format(open(self.pidfile,'r').read()))
+                return True
+            else:
+                return False
 
     def stop(self):
         """Stop the daemon."""
@@ -110,11 +122,6 @@ class Daemon:
                 else:
                     self.logger.error('failed to kill the daemon: {0}'.format(err))
                     return False
-
-    def restart(self):
-        """Restart the daemon."""
-        self.stop()
-        self.start()
 
     def run(self):
         """You should override this method when you subclass Daemon.
