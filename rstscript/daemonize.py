@@ -8,7 +8,11 @@ import atexit
 import signal
 import socketserver
 
-class DaemonizerException(Exception):
+class DaemonizeError(Exception):
+    pass
+class DaemonizeAlreadyStartedError(Exception):
+    pass
+class DaemonizeNotRunningError(Exception):
     pass
 
 class Daemon(object,metaclass=abc.ABCMeta):
@@ -25,7 +29,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
         try:
             pid = os.fork()
         except OSError as err:
-            raise DaemonizerException('fork #1 failed: {0}\n'.format(err.args))
+            raise DaemonizeError('fork #1 failed: {0}\n'.format(err.args))
 
         # instead of exiting the parent process, just shield the further
         # daemonizing from it, so it can continue in foreground
@@ -42,7 +46,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
                     # exit from second parent
                     sys.exit(0)
             except OSError as err:
-                raise DaemonizerException('fork #2 failed: {0}\n'.format(err.args))
+                raise DaemonizeError('fork #2 failed: {0}\n'.format(err.args))
 
             # redirect standard file descriptors
             sys.stdout.flush()
@@ -76,7 +80,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
         # Check for a pidfile to see if the daemon already runs
         if os.path.exists(self.pidfile):
             msg = "pidfile {0} already exist".format(self.pidfile)
-            raise DaemonizerException(msg)
+            raise DaemonizeAlreadyStartedError(msg)
         else:
             # Start the daemon
             pid = os.getpid()
@@ -100,7 +104,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
                         return child_pid
                     except OSError:
                         time.sleep(0.01)
-                raise DaemonizerException('daemon couldn\'t be launched, timeout reached')
+                raise DaemonizeError('daemon couldn\'t be launched, timeout reached')
             else:
                 sys.exit(0) # just exit for all childs if they ever will get that far
 
@@ -118,7 +122,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
             msg = "pidfile {0} does not exist".format(self.pidfile)
             # though we hadn't to do anything the daemon seems done so we can
             # start a new one or whatever
-            raise DaemonizerException(msg)
+            raise DaemonizeNotRunningError(msg)
         else:
             # Try killing the daemon process
             try:
@@ -134,7 +138,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
                                 .format(pid))
                     return True
                 else:
-                    raise DaemonizerException('failed to stop the daemon: {0}'
+                    raise DaemonizeError('failed to stop the daemon: {0}'
                             .format(err.args))
 
     @abc.abstractmethod
@@ -157,8 +161,7 @@ class SocketServerDaemon(Daemon):
         # Check for a sockfile to see if the daemon already runs
         if os.path.exists(self.sockfile):
             msg = "sockfile {0} already exist".format(self.sockfile)
-            self.logger.warning(msg)
-            raise DaemonizerException(msg)
+            raise DaemonizeAlreadyStartedError(msg)
         else:
             if super().start():
                 self.logger.info('listening on "{0}"'.format(self.sockfile))
@@ -167,8 +170,7 @@ class SocketServerDaemon(Daemon):
         # Check for a sockfile to see if the daemon already runs
         if not os.path.exists(self.sockfile):
             msg = "sockfile {0} doesn\'t exist".format(self.sockfile)
-            self.logger.warning(msg)
-            raise DaemonizerException(msg)
+            raise DaemonizeNotRunningError(msg)
         else:
             # register cleanup on exit
             if super().stop():

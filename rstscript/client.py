@@ -1,22 +1,72 @@
 import os
 import sys
+import yaml
 import socket
 import select
+import pkgutil
+import logging
 import argparse
+import colorama
 import rstscript
 
+from rstscript import daemonize
+from rstscript import server
+
+class ColorizingStreamHandler(logging.StreamHandler):
+    # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
+    # Tweaked to use colorama for the coloring
+
+    """
+    Sets up a colorized logger, which is used ltscript
+    """
+    color_map = {
+        logging.INFO: colorama.Fore.WHITE,
+        logging.DEBUG: colorama.Style.DIM + colorama.Fore.CYAN,
+        logging.WARNING: colorama.Fore.YELLOW,
+        logging.ERROR: colorama.Fore.RED,
+        logging.CRITICAL: colorama.Back.RED,
+        logging.FATAL: colorama.Back.RED,
+    }
+
+    def __init__(self, stream, color_map=None):
+        logging.StreamHandler.__init__(self,
+                                       colorama.AnsiToWin32(stream).stream)
+        if color_map is not None:
+            self.color_map = color_map
+
+    @property
+    def is_tty(self):
+        isatty = getattr(self.stream, 'isatty', None)
+        return isatty and isatty()
+
+    def format(self, record):
+        message = logging.StreamHandler.format(self, record)
+        if self.is_tty:
+            # Don't colorize a traceback
+            parts = message.split('\n', 1)
+            parts[0] = self.colorize(parts[0], record)
+            message = '\n'.join(parts)
+        return message
+
+    def colorize(self, message, record):
+        try:
+            return (self.color_map[record.levelno] + message +
+                    colorama.Style.RESET_ALL)
+        except KeyError:
+            return message
 
 def make_parser():
     default_configdir = os.path.join(os.getenv("XDG_CONFIG_HOME",''),"rstscript")
-    parser = argparse.ArgumentParser()
-
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('--start',action='store_true',help='start the server')
-    group.add_argument('--stop',action='store_true',help='stop the server')
-
-    parser.add_argument("-c", "--conf", dest="conf",
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("-c", "--conf", dest="conf",
             default=os.path.join(default_configdir,'config.yml'),
             help="specify config file")
+
+    parser = argparse.ArgumentParser(parents=[pre_parser])
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--restart',action='store_true',help='start the server')
+    group.add_argument('--stop',action='store_true',help='stop the server')
+
     parser.add_argument("--pdb",action='store_true', dest="pdb",
             help="debug with pdb")
     parser.add_argument('--plugindir',action='store',
@@ -63,11 +113,7 @@ def make_parser():
                     help="Figure format for matplolib graphics: Defaults to"
                         "'png' for rst and Sphinx html documents and 'pdf' "
                         "for tex")
-    return parser
-
-
-# Connect to the server
-#address = '/tmp/socketserver.sock'
+    return pre_parser,parser
 
 def make_initial_setup(configfilename):
     """ copies the default config file
@@ -89,61 +135,84 @@ def make_initial_setup(configfilename):
     elif userinput == 'n':
         return False
 
+def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
+        logmaxmb=0,logbackups=1):
+    logger = logging.getLogger(logname)
+    # setup the app logger
+    handlers = []
+    if not logmaxmb:
+        handlers.append(logging.FileHandler(logfile))
+    else:
+        from logging.handlers import RotatingFileHandler
+        handlers.append(RotatingFileHandler(logfile,
+            maxBytes=logmaxmb * 1024 * 1024, backupCount=logbackups))
+    if not quiet or debug:
+        # also log to stderr
+        #handlers.append(logging.StreamHandler(sys.stdout))
+        handlers.append(ColorizingStreamHandler(sys.stdout))
+    formatter = logging.Formatter(
+            '%(levelname)s %(asctime)s %(name)s: %(message)s')
+    for handler in handlers:
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    if debug:
+        logger.setLevel('DEBUG')
+    else:
+        if hasattr(logging,loglevel):
+            logger.setLevel(getattr(logging,loglevel.upper()))
+        else:
+            logger.setLevel('WARNING')
+            logger.error('invalid logging level "{0}"'.format(loglevel))
+    return logger
+
 def main(argv=None):
     # read deafult configs
     configs = yaml.load(pkgutil.get_data(__name__,'defaults/config.yml'))
     if not argv:
         argv = sys.argv[1:]
     # parse the arguments
-    parser = make_parser()
-    configs.update(vars(parser.parse_args(argv)))
+    pre_parser, parser = make_parser()
+    options, remaining_argv = pre_parser.parse_known_args(argv)
+    configs.update(vars(options))
     # read configfile
     if not os.path.exists(configs['conf']):
         make_initial_setup(configs['conf'])
     else:
         configs.update(yaml.load(open(configs['conf'],'r')))
-    # create the server object
-    rstscriptserver = RstScriptServer(**configs)
-    if configs['start']:
-        rstscriptserver.start()
+    configs.update(vars(parser.parse_args(remaining_argv)))
+    # make the logger
+    logger = make_logger('rstscript.server',configs['logfile'],
+            loglevel=configs['loglevel'],debug=configs['debug'])
+
+    d = daemonize.SocketServerDaemon(configs['socketfile'],configs['pidfile'],
+            logger,server.RstscriptHandler)
+
+    if configs['restart']:
+        try:
+            d.stop()
+            d.start()
+        except:
+            raise
     elif configs['stop']:
-        rstscriptserver.stop()
-    elif configs['restart']:
-        rstscriptserver.stop()
-        rstscriptserver.start()
+        try:
+            d.stop()
+        except daemonize.DaemonizeNotRunningError as e:
+            logger.info(e)
+    else:
+        try:
+            d.start()
+        except daemonize.DaemonizeAlreadyStartedError as e:
+            logger.info(e)
 
-
-def main(argv=None,address='/tmp/rstscript.sock'):
-    # invoked from commandline or through import
-    if not argv:
-        argv = sys.argv[1:]
-    # make the parser
-    parser = make_parser()
-    # parse the options
-    options = vars(parser.parse_args(argv))
-    # create the socket
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.setblocking(0)
-    try:
-        sock.connect(address)
-    #except socket.ConnectionRefusedError:
-    except Exception as e:
-        print('exception',e)
-        # server seems down
-        start_server()
-        sock.connect(address)
-
-    len_sent = sock.send(b'hello server')
-
-    # Receive a response
-    ready = select.select([sock], [], [], 6)
-    if ready:
-        response = sock.recv(1024)
-        print('Received: "%s"' % response)
-        # Clean up
-        sock.close()
-
-
+        ## create the server object
+    #rstscriptserver = RstScriptServer(**configs)
+    #if configs['start']:
+        #rstscriptserver.start()
+    #elif configs['stop']:
+        #rstscriptserver.stop()
+    #elif configs['restart']:
+        #rstscriptserver.stop()
+        #rstscriptserver.start()
 
 
 if '__main__' == __name__:
