@@ -1,5 +1,4 @@
-litscript/.ropeproject
-litscript/test/testfile.rst
 *.pyc
 old/*
-litscript.egg-info/*
+*egg-info/*
+tests/testfile.*

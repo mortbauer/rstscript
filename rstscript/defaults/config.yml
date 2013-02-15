@@ -1,0 +1,4 @@
+socketfile : "/tmp/rstscript.sock"
+pidfile : "/tmp/rstscript.pid"
+logfile : "rstscript.log"
+plugindir: "plugins"
