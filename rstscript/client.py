@@ -1,65 +1,66 @@
 import os
 import sys
-import yaml
+import ujson
 import socket
 import select
 import pkgutil
 import logging
 import argparse
-import colorama
 import rstscript
 
 from rstscript import daemonize
 from rstscript import server
 
-class ColorizingStreamHandler(logging.StreamHandler):
-    # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
-    # Tweaked to use colorama for the coloring
+def make_color_handler():
+    import colorama
+    class ColorizingStreamHandler(logging.StreamHandler):
+        # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
+        # Tweaked to use colorama for the coloring
 
-    """
-    Sets up a colorized logger, which is used ltscript
-    """
-    color_map = {
-        logging.INFO: colorama.Fore.WHITE,
-        logging.DEBUG: colorama.Style.DIM + colorama.Fore.CYAN,
-        logging.WARNING: colorama.Fore.YELLOW,
-        logging.ERROR: colorama.Fore.RED,
-        logging.CRITICAL: colorama.Back.RED,
-        logging.FATAL: colorama.Back.RED,
-    }
+        """
+        Sets up a colorized logger, which is used ltscript
+        """
+        color_map = {
+            logging.INFO: colorama.Fore.WHITE,
+            logging.DEBUG: colorama.Style.DIM + colorama.Fore.CYAN,
+            logging.WARNING: colorama.Fore.YELLOW,
+            logging.ERROR: colorama.Fore.RED,
+            logging.CRITICAL: colorama.Back.RED,
+            logging.FATAL: colorama.Back.RED,
+        }
 
-    def __init__(self, stream, color_map=None):
-        logging.StreamHandler.__init__(self,
-                                       colorama.AnsiToWin32(stream).stream)
-        if color_map is not None:
-            self.color_map = color_map
+        def __init__(self, stream, color_map=None):
+            logging.StreamHandler.__init__(self,
+                                        colorama.AnsiToWin32(stream).stream)
+            if color_map is not None:
+                self.color_map = color_map
 
-    @property
-    def is_tty(self):
-        isatty = getattr(self.stream, 'isatty', None)
-        return isatty and isatty()
+        @property
+        def is_tty(self):
+            isatty = getattr(self.stream, 'isatty', None)
+            return isatty and isatty()
 
-    def format(self, record):
-        message = logging.StreamHandler.format(self, record)
-        if self.is_tty:
-            # Don't colorize a traceback
-            parts = message.split('\n', 1)
-            parts[0] = self.colorize(parts[0], record)
-            message = '\n'.join(parts)
-        return message
-
-    def colorize(self, message, record):
-        try:
-            return (self.color_map[record.levelno] + message +
-                    colorama.Style.RESET_ALL)
-        except KeyError:
+        def format(self, record):
+            message = logging.StreamHandler.format(self, record)
+            if self.is_tty:
+                # Don't colorize a traceback
+                parts = message.split('\n', 1)
+                parts[0] = self.colorize(parts[0], record)
+                message = '\n'.join(parts)
             return message
 
+        def colorize(self, message, record):
+            try:
+                return (self.color_map[record.levelno] + message +
+                        colorama.Style.RESET_ALL)
+            except KeyError:
+                return message
+    return ColorizingStreamHandler(sys.stdout)
 def make_parser():
     default_configdir = os.path.join(os.getenv("XDG_CONFIG_HOME",''),"rstscript")
     pre_parser = argparse.ArgumentParser(add_help=False)
     pre_parser.add_argument("-c", "--conf", dest="conf",
-            default=os.path.join(default_configdir,'config.yml'),
+            default=os.path.join(default_configdir,'config.json'),
             help="specify config file")
 
     parser = argparse.ArgumentParser(parents=[pre_parser])
@@ -85,20 +86,18 @@ def make_parser():
                     help='Specify the logging level')
     parser.add_argument('--version', action='version', version=rstscript.__version__)
 
-    parser.add_argument('-i','--input', dest='input',type=argparse.FileType('rt'), nargs=1,
+    parser.add_argument('-i','--input', dest='input',nargs=1,
                     required=True,default=[sys.stdin], help='rstscript source file')
 
     parser.add_argument('-t',action='store_true',dest='tangle',help='tangle the document')
 
-    parser.add_argument("-ot", dest="toutput",
-                        type=argparse.FileType('wt'), nargs='?',
+    parser.add_argument("-ot", dest="toutput", nargs='?',
                     help="output file for tangling")
 
     parser.add_argument('--noweave',action='store_true',dest='noweave',
             help='don\'t weave the document')
 
-    parser.add_argument("-ow", dest="woutput",
-                        type=argparse.FileType('wt'), nargs='?',
+    parser.add_argument("-ow", dest="woutput", nargs='?',
                     help="output file for weaving")
 
     parser.add_argument("--processor", dest="processor",default='python',
@@ -130,7 +129,7 @@ def make_initial_setup(configfilename):
         return False
     elif userinput == 'y':
         with open(configfilename,'wb') as f:
-            f.write(pkgutil.get_data(__name__,'defaults/config.yml'))
+            f.write(pkgutil.get_data(__name__,'defaults/config.json'))
         return True
     elif userinput == 'n':
         return False
@@ -148,8 +147,7 @@ def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
             maxBytes=logmaxmb * 1024 * 1024, backupCount=logbackups))
     if not quiet or debug:
         # also log to stderr
-        #handlers.append(logging.StreamHandler(sys.stdout))
-        handlers.append(ColorizingStreamHandler(sys.stdout))
+        handlers.append(make_color_handler())
     formatter = logging.Formatter(
             '%(levelname)s %(asctime)s %(name)s: %(message)s')
     for handler in handlers:
@@ -167,7 +165,7 @@ def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
 
 def main(argv=None):
     # read deafult configs
-    configs = yaml.load(pkgutil.get_data(__name__,'defaults/config.yml'))
+    configs = ujson.loads(pkgutil.get_data(__name__,'defaults/config.json').decode('utf-8'))
     if not argv:
         argv = sys.argv[1:]
     # parse the arguments
@@ -178,15 +176,17 @@ def main(argv=None):
     if not os.path.exists(configs['conf']):
         make_initial_setup(configs['conf'])
     else:
-        configs.update(yaml.load(open(configs['conf'],'r')))
+        configs.update(ujson.load(open(configs['conf'],'r')))
     configs.update(vars(parser.parse_args(remaining_argv)))
     # make the logger
     logger = make_logger('rstscript.server',configs['logfile'],
             loglevel=configs['loglevel'],debug=configs['debug'])
 
+    # create a daemonizedserver object
     d = daemonize.SocketServerDaemon(configs['socketfile'],configs['pidfile'],
             logger,server.RstscriptHandler)
 
+    # start/stop the server
     if configs['restart']:
         try:
             d.stop()
@@ -203,6 +203,25 @@ def main(argv=None):
             d.start()
         except daemonize.DaemonizeAlreadyStartedError as e:
             logger.info(e)
+
+    if not configs['stop']:
+        # Connect to the server
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(configs['socketfile'])
+        sock.setblocking(0)
+
+        # Send the data
+        message = ujson.dumps(configs)
+        print('Sending : "%s"' % message)
+        len_sent = sock.send(message.encode('utf-8'))
+
+        # Receive a response
+        ready = select.select([sock], [], [], 6)
+        if ready:
+            response = sock.recv(1024)
+            print('Received: "%s"' % response)
+            # Clean up
+        sock.close()
 
         ## create the server object
     #rstscriptserver = RstScriptServer(**configs)

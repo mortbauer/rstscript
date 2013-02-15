@@ -12,7 +12,7 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
         data = self.request.recv(1024)
         cur_thread = threading.currentThread()
         response = '%s: %s' % (cur_thread.getName(), data)
-        time.sleep(5)
+        #time.sleep(5)
         self.request.send(response.encode('utf-8'))
         return
 
