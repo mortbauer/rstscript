@@ -1,11 +1,10 @@
 import os
 import sys
-import ipdb
+import time
 import ujson
 import socket
 import select
 import pkgutil
-import logging
 import argparse
 import rstscript
 
@@ -13,6 +12,7 @@ from rstscript import daemonize
 from rstscript import server
 
 def make_color_handler():
+    import logging
     import colorama
     class ColorizingStreamHandler(logging.StreamHandler):
         # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
@@ -162,35 +162,6 @@ def parse_through_args(proc_form_args):
     form_args.extend(proc_form_args[:min(i_f,i_p)])
     return proc_args,form_args
 
-def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
-        logmaxmb=0,logbackups=1):
-    logger = logging.getLogger(logname)
-    # setup the app logger
-    handlers = []
-    if not logmaxmb:
-        handlers.append(logging.FileHandler(logfile))
-    else:
-        from logging.handlers import RotatingFileHandler
-        handlers.append(RotatingFileHandler(logfile,
-            maxBytes=logmaxmb * 1024 * 1024, backupCount=logbackups))
-    if not quiet or debug:
-        # also log to stderr
-        handlers.append(make_color_handler())
-    formatter = logging.Formatter(
-            '%(levelname)s %(asctime)s %(name)s: %(message)s')
-    for handler in handlers:
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    if debug:
-        logger.setLevel('DEBUG')
-    else:
-        if hasattr(logging,loglevel):
-            logger.setLevel(getattr(logging,loglevel.upper()))
-        else:
-            logger.setLevel('WARNING')
-            logger.error('invalid logging level "{0}"'.format(loglevel))
-    return logger
-
 def main(argv=None):
     # read deafult configs
     configs = ujson.loads(pkgutil.get_data(__name__,'defaults/config.json').decode('utf-8'))
@@ -209,7 +180,8 @@ def main(argv=None):
     mainopts, throughargs = parser.parse_known_args(remaining_argv)
     configs.update(vars(mainopts))
     # parse through passing args
-    configs['proc_args'], configs['form_args'] = parse_through_args(throughargs)
+    configs['proc_args'], configs['form_args'] = ([],[])
+    #configs['proc_args'], configs['form_args'] = parse_through_args(throughargs)
     # add the source directory to the config
     configs['rootdir'] = os.path.abspath('.')
     # make the file paths absolute
@@ -272,4 +244,6 @@ def main(argv=None):
         #rstscriptserver.start()
 
 if '__main__' == __name__:
+    t1 = time.time()
     main()
+    print('took me "{0}" sec in main'.format(time.time()-t1))
