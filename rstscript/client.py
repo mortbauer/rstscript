@@ -189,26 +189,32 @@ def main(argv=None):
         if configs[x] and not os.path.isabs(configs[x]) :
             configs[x] = os.path.join(configs['rootdir'],configs[x])
 
-    # create a daemonizedserver object
-    daemon = lambda : daemonize.SocketServerDaemon(configs,server.RstscriptHandler)
+    # add current tty info
+    for std in ('stdin','stdout','stderr'):
+        fileno = getattr(sys,std).fileno()
+        if os.isatty(fileno):
+            configs[std] = os.ttyname(fileno)
+
+    # lazy create a daemonizedserver object
+    daemon = lambda configs: daemonize.SocketServerDaemon(configs,server.RstscriptHandler)
 
     # start/stop the server
     if configs['restart']:
-        d = daemon()
+        d = daemon(configs)
         try:
             d.stop()
             d.start()
         except:
             raise
     elif configs['stop']:
-        d = daemon()
+        d = daemon(configs)
         try:
             d.stop()
         except daemonize.DaemonizeNotRunningError as e:
             sys.stderr.write(str(e))
     else:
         if not os.path.exists(configs['socketfile']):
-            d = daemon()
+            d = daemon(configs)
             try:
                 d.start()
             except daemonize.DaemonizeAlreadyStartedError as e:
@@ -222,14 +228,14 @@ def main(argv=None):
 
         # Send the data
         message = ujson.dumps(configs)
-        print('\nSending : "%s"' % message)
+        #print('\nSending : "%s"' % message)
         len_sent = sock.send(message.encode('utf-8'))
 
         # Receive a response
         ready = select.select([sock], [], [], 6)
         if ready:
             response = sock.recv(1024)
-            print('\nReceived: "%s"' % response.decode('utf-8'))
+            #print('\nReceived: "%s"' % response.decode('utf-8'))
             # Clean up
         sock.close()
 
@@ -246,4 +252,4 @@ def main(argv=None):
 if '__main__' == __name__:
     t1 = time.time()
     main()
-    print('took me "{0}" sec in main'.format(time.time()-t1))
+    #print('took me "{0}" sec in main'.format(time.time()-t1))
