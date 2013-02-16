@@ -72,9 +72,11 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
             handler = ColorizingStreamHandler(open(options['stdout'],'w'))
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
+            self.logger.setLevel(getattr(logging,options['loglevel'].upper(),'DEBUG'))
         else:
             # log to central log file
             self.logger = self.server.logger
+        self.logger.info('current running threads "{0}"'.format(len(threading.enumerate())))
         # test if project is new
         project_id = (options['input'],options['woutput'],options['toutput'])
         if project_id in self.server.projects:

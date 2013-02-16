@@ -20,7 +20,11 @@ Hallo Susi
 
 	b = (2 * 4)
 
+	b = 8
+
 	c = myfunc()
+
+	c = 25
 
 	d = myfunc
 
@@ -40,7 +44,11 @@ Hallo Susi
 
 	b = (2 * 4)
 
+	b = 8
+
 	c = myfunc()
+
+	c = 25
 
 	d = myfunc
 

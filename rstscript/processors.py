@@ -7,30 +7,17 @@ import meta
 import traceback
 import logging
 import collections
-import copy
-import getopt
 
 import rstscript
 from . import hunks
 
+CChunk = collections.namedtuple('CChunk',['chunk','hunks'])
 logger = logging.getLogger('rstscript.process')
 
 class PluginBase(metaclass=abc.ABCMeta):
     @property
     @abc.abstractmethod
     def name(self):
-        pass
-    @property
-    @abc.abstractmethod
-    def short_options(self):
-        pass
-    @property
-    @abc.abstractmethod
-    def long_options(self):
-        pass
-    @property
-    @abc.abstractmethod
-    def defaults(self):
         pass
     @classmethod
     def register(self):
@@ -53,20 +40,6 @@ class PluginBase(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def process(self):
         pass
-    @classmethod
-    def make_parser(cls,defaults):
-        opts = copy.deepcopy(cls.defaults)
-        def parser(largs,linenumber=0):
-            try:
-                tuples = getopt.getopt(largs,cls.short_options,cls.long_options)
-                if len(tuples[1]):
-                    logger.warning('unhandeled argument "{0}" in linenumber "{1}"'.format(tuples[1],linenumber))
-                opts.update([(x[0].strip('-'),x[1] if x[1] else True) for x in tuples[0]])
-            except getopt.GetoptError as e:
-                logger.warning('{0} in line "{1}"'.format(e,linenumber))
-            return opts
-        opts.update(parser(defaults))
-        return parser
 
 class LitVisitor(ast.NodeTransformer):
     """ special ast visitor, parses code chunks from string into single code
@@ -111,10 +84,14 @@ class BaseProcessor(PluginBase):
     plugins = {}
 
 
+class NoneProcessore(BaseProcessor):
+    name = 'none'
+
+    def process(self,chunk):
+        yield CChunk(chunk,[hunks.CodeIn(chunk.raw)])
+
 class PythonProcessor(BaseProcessor):
     name = 'python'
-    short_options = 'a'
-    long_options = ['autofigure']
     defaults = {'a':False,'autofigure':False}
 
     def __init__(self,appoptions):
@@ -135,7 +112,7 @@ class PythonProcessor(BaseProcessor):
             os.mkdir(self.options['figdir'])
         return self.options['figdir']
 
-    def execute(self,codechunk,options):
+    def execute(self,codechunk):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
         self.stdout.seek(0)
@@ -190,60 +167,65 @@ class PythonProcessor(BaseProcessor):
         tree = ast.parse(chunk.raw)
         lhunks = []
         for codechunk in self.visitor.visit(tree,chunk.lineNumber):
-            for hunk in self.execute(codechunk,chunk.pre_args[1]):
+            for hunk in self.execute(codechunk):
                 # test if hunk is empty or not, only append not empty
                 if hunk.simple:
                     lhunks.append(hunk)
-        # autosave figures
-        if chunk.pre_args[1]['autofigure']:
+        # autosave figures TODO
+        if chunk.options.get('autofigure',False):
             try:
-                label = '{0}_{1}'.format(chunk.post_args[1]['label'],chunk.number)
+                label = '{0}_{1}'.format(chunk.options['label'],chunk.number)
                 for fig in self._saveallfigures(label,
-                        chunk.post_args[1]['desc']):
+                        chunk.options['desc']):
                     lhunks.append(fig)
                 self.plt.close('all')
             except Exception as e:
                 logger.error('couldn\'t save figure, Exception {0}'.format(e))
 
-        yield hunks.CChunk(chunk,lhunks)
+        yield CChunk(chunk,lhunks)
 
 class BaseFormatter(PluginBase):
     plugtype = 'formatter'
     plugins = {}
 
 
+class NoneFormatter(BaseFormatter):
+    name = 'none'
+
+    def process(self,cchunk):
+        for hunk in cchunk.hunks:
+            yield hunk.simple
+
 class CompactFormatter(BaseFormatter):
     name = 'compact'
-    short_options = 'aesl'
-    long_options = ['autofigure','label=','desc=']
     defaults = {'a':False,'e':True,'s':False,'l':False,
             'autofigure':False,'label':'','desc':''}
 
     def _decide(self,hunk,options):
         # needs to stay on top to silence output
-        if options.setdefault('s',False):
+        if options.get('s',False):
             if type(hunk)==hunks.CodeTraceback:
                 return hunk
             else:
                 return hunks.Empty()
         if type(hunk)==hunks.CodeResult:
-            if options.setdefault('a',False):
+            if options.get('a',False):
                 return hunk
         elif type(hunk)==hunks.CodeIn:
-            if options.setdefault('e',False):
+            if options.get('e',False):
                 return hunk
         else:
             return hunk
         # if not previously returned return now empty hunk
         return hunks.Empty()
 
-    def process(self,cchunk,options):
+    def process(self,cchunk):
         i = 0
         for hunk in cchunk.hunks:
             if i == 0:
-                yield self._decide(hunk,options).formatted
+                yield self._decide(hunk,cchunk.chunk.options).formatted
             else:
-                yield self._decide(hunk,options).simple
+                yield self._decide(hunk,cchunk.chunk.options).simple
             i += 1
 
 

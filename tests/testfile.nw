@@ -18,7 +18,7 @@ d = myfunc
 
 Hallo Martin 
 Hallo Susi
-%<<pythonn
+%<<{"proc":"python"}
 #from pylab import *
 #plot(1,2)
 print('pfiate')

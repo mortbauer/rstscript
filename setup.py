@@ -3,8 +3,7 @@
 import re
 import sys
 import rstscript
-#from setuptools import setup
-from cx_Freeze import setup,Executable
+from setuptools import setup
 
 # from http://cburgmer.posterous.com/pip-requirementstxt-and-setuppy
 def parse_requirements(file_name):
@@ -31,14 +30,14 @@ def parse_dependency_links(file_name):
     return dependency_links
 
 
-base = None
-if sys.platform == "win32":
     base = "Win32GUI"
+
 
 setup(name='rstscript',
       entry_points = {
           'console_scripts' :
-              ['rstscript = rstscript.main:run'
+              ['rstscript = rstscript.main:client_main',
+               'rstscriptd = rstscript.main:server_main'
                ]},
       version=rstscript.__version__,
       description=rstscript.__description__,
@@ -48,10 +47,9 @@ setup(name='rstscript',
       download_url=rstscript.__url__,
       license=rstscript.__copyright__,
       packages=['rstscript'],
-      package_data={'rstscript':['defaults/config.json']},
+      package_data={'rstscript':['defaults/config.yml']},
       install_requires=parse_requirements('requirements.txt'),
       dependency_links=parse_dependency_links('requirements.txt'),
-      executables = [Executable(script = "rstscript/client.py")],
       extras_require = {
         'autofigure':  ["matplotlib"]
       },
