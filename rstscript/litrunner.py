@@ -12,7 +12,7 @@ from . import processors
 
 __all__ = ['read','pre_process','processors','post_process', 'write']
 
-logger = logging.getLogger('rstscript.litrunner')
+#self.logger = logging.getLogger('rstscript.litrunner')
 
 class Litrunner(object):
     """ Litrunner main Class
@@ -28,13 +28,14 @@ class Litrunner(object):
     Now it should be fine to read or do whatever.
     """
 
-    def __init__(self,app_options) :
+    def __init__(self,app_options,logger) :
         self.processorClasses = {}
         self.processors = {}
         self.formatters = {}
         self.preargparser = {}
         self.postargparser = {}
         self.options = app_options
+        self.logger = logger
         # register all loaded plugins, at least try it
         for processor in processors.BaseProcessor.plugins.values():
             self.register_processor(processor)
@@ -51,15 +52,15 @@ class Litrunner(object):
         if name in self.processorClasses:
             if not name in self.processors:
                 self.processors[name] = self.processorClasses[name](self.options)
-                logger.info('instantiated processor "{0}"'.format(name))
+                self.logger.info('instantiated processor "{0}"'.format(name))
             return self.processors[name].process
         else:
-            logger.error('there is no processor named "{0}",'
+            self.logger.error('there is no processor named "{0}",'
             'i will try the default one'.format(name))
             dname = self.def_proc
             if not dname in self.processors:
                 self.processors[dname] = self.processorClasses[dname]()
-                logger.info('instantiated processor "{0}"'.format(dname))
+                self.logger.info('instantiated processor "{0}"'.format(dname))
             return self.processors[dname].process
 
     def get_formatter(self,name):
@@ -71,7 +72,7 @@ class Litrunner(object):
             self.processorClasses[ProcessorClass.name] = ProcessorClass
             self.preargparser[ProcessorClass.name] = ProcessorClass.make_parser(self.options['proc_args'])
         else:
-            logger.error('processor "{0}" already known'.format(ProcessorClass.name))
+            self.logger.error('processor "{0}" already known'.format(ProcessorClass.name))
 
     def register_formatter(self,FormatterClass):
         # maybe a bit unusual, but seems to work
@@ -79,15 +80,15 @@ class Litrunner(object):
             self.formatters[FormatterClass.name] = FormatterClass()
             self.postargparser[FormatterClass.name] = FormatterClass.make_parser(self.options['form_args'])
         else:
-            logger.error('processor "{0}" already known'.format(FormatterClass.name))
+            self.logger.error('processor "{0}" already known'.format(FormatterClass.name))
 
     def test_readiness(self):
         if not self.options['processor'] in self.processorClasses:
-            logger.error('command "{0}", set as default command is unknown,'
+            self.logger.error('command "{0}", set as default command is unknown,'
                     'won\'t do anything'.format(self.options['processor']))
             return False
         if not self.options['formatter'] in self.formatters:
-            logger.error('command "{0}", set as default formatter is unknown,'
+            self.logger.error('command "{0}", set as default formatter is unknown,'
                     'won\'t do anything'.format(self.options['formatter']))
             return False
         return True
@@ -120,7 +121,7 @@ class Litrunner(object):
             content.truncate()
             chunk = Chunk(number,linenumber,chunktype,pre,post,content.getvalue())
             content.seek(0)
-            logger.info(chunk)
+            self.logger.info(chunk)
             return chunk
 
         def get_param(line,parsers,def_command,linen):
@@ -132,7 +133,7 @@ class Litrunner(object):
                         parsed = parsers[lcommand](unparsed[1:],linen)
                         return lcommand,parsed
                     else:
-                        logger.error('there is no processor named "{0}" '
+                        self.logger.error('there is no processor named "{0}" '
                         'specified in line "{1}"'.format(lcommand,linen))
                 else:
                     parsed = parsers[def_command](unparsed,linen)
@@ -188,7 +189,7 @@ class Litrunner(object):
             elif chunk.type == 'text':
                 yield hunks.CChunk(chunk,[hunks.Text(chunk.raw)])
             else:
-                logger.error('unsupported chunk type {0}'.
+                self.logger.error('unsupported chunk type {0}'.
 
                         format(chunk.type))
 
@@ -203,7 +204,7 @@ class Litrunner(object):
             elif chunk.type == 'text':
                 pass
             else:
-                logger.error('unsupported chunk type {0}'.
+                self.logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
             yield chunk
 
@@ -215,20 +216,20 @@ class Litrunner(object):
             elif cchunk.chunk.type == 'text':
                 yield cchunk.hunks[0].formatted
             else:
-                logger.error('unsupported chunk type {0}'.
+                self.logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
 
     def run(self):
         if not self.test_readiness():
-            logger.error('can\'t start to run, provide propper options')
+            self.logger.error('can\'t start to run, provide propper options')
             return False
-        logger.info('Run Litrunner with options "{0}"'.
+        self.logger.info('Run Litrunner with options "{0}"'.
                 format(pprint.pformat(self.options)))
 
         self.input = open(self.options['input'],'r')
         if not self.options['noweave'] and not self.options['tangle']:
             self.woutput = open(self.options['woutput'],'w')
-            logger.info('starting to weave the document')
+            self.logger.info('starting to weave the document')
             try:
                 for formatted in self.format(self.weave(self.read(self.input))):
                     self.woutput.write(formatted)
@@ -237,7 +238,7 @@ class Litrunner(object):
         elif not self.options['noweave'] and self.options['tangle']:
             self.woutput = open(self.options['woutput'],'w')
             self.toutput = open(self.options['toutput'],'w')
-            logger.info('starting to weave and tangle the document')
+            self.logger.info('starting to weave and tangle the document')
             try:
                 for formatted in self.format(self.weave(self.tangle(self.read(self.input)))):
                     self.woutput.write(formatted)
@@ -246,14 +247,14 @@ class Litrunner(object):
                 self.toutput.close()
         elif self.options['noweave'] and self.options['tangle']:
             self.toutput = open(self.options['toutput'],'w')
-            logger.info('starting to tangle the document')
+            self.logger.info('starting to tangle the document')
             try:
                 for formatted in self.tangle(self.read(self.options['input'][0])):
                     pass
             finally:
                 self.toutput.close()
         else:
-            logger.info('no job specified, don\'t do anything')
+            self.logger.info('no job specified, don\'t do anything')
         self.input.close()
 
         return True

@@ -21,9 +21,9 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
         project_id = (options['input'],options['woutput'],options['toutput'])
         if project_id in self.server.projects:
             if self.server.projects[project_id].options != options:
-                self.server.projects[project_id] = Litrunner(options)
+                self.server.projects[project_id] = Litrunner(options,self.server.logger)
         else:
-            self.server.projects[project_id] = Litrunner(options)
+            self.server.projects[project_id] = Litrunner(options,self.server.logger)
         # now run the project
         self.server.projects[project_id].run()
         print('served in "{0}" sec'.format(time.time()-t1))
