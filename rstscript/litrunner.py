@@ -199,7 +199,7 @@ class Litrunner(object):
         and  yields the same chunks coming in unchanged."""
         for chunk in chunks:
             if chunk.type == 'code':
-                self.options.toutput.write(chunk.raw)
+                self.toutput.write(chunk.raw)
             elif chunk.type == 'text':
                 pass
             else:
@@ -223,23 +223,38 @@ class Litrunner(object):
             logger.error('can\'t start to run, provide propper options')
             return False
         logger.info('Run Litrunner with options "{0}"'.
-                format(pprint.pformat(vars(self.options))))
-        if not self.options.noweave and not self.options.tangle:
+                format(pprint.pformat(self.options)))
+
+        self.input = open(self.options['input'],'r')
+        if not self.options['noweave'] and not self.options['tangle']:
+            self.woutput = open(self.options['woutput'],'w')
             logger.info('starting to weave the document')
-            # self.options.input is a list of open files returned by argparse,
-            # maybe should be changed in the future
-            for formatted in self.format(self.weave(self.read(self.options.input[0]))):
-                self.options.woutput.write(formatted)
-        elif not self.options.noweave and self.options.tangle:
+            try:
+                for formatted in self.format(self.weave(self.read(self.input))):
+                    self.woutput.write(formatted)
+            finally:
+                self.woutput.close()
+        elif not self.options['noweave'] and self.options['tangle']:
+            self.woutput = open(self.options['woutput'],'w')
+            self.toutput = open(self.options['toutput'],'w')
             logger.info('starting to weave and tangle the document')
-            for formatted in self.format(self.weave(self.tangle(self.read(self.options.input[0])))):
-                self.options.woutput.write(formatted)
-        elif self.options.noweave and self.options.tangle:
+            try:
+                for formatted in self.format(self.weave(self.tangle(self.read(self.input)))):
+                    self.woutput.write(formatted)
+            finally:
+                self.woutput.close()
+                self.toutput.close()
+        elif self.options['noweave'] and self.options['tangle']:
+            self.toutput = open(self.options['toutput'],'w')
             logger.info('starting to tangle the document')
-            for formatted in self.tangle(self.read(self.options.input[0])):
-                pass
+            try:
+                for formatted in self.tangle(self.read(self.options['input'][0])):
+                    pass
+            finally:
+                self.toutput.close()
         else:
             logger.info('no job specified, don\'t do anything')
+        self.input.close()
 
         return True
 

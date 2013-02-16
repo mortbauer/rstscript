@@ -7,6 +7,8 @@ Hallo Susi
 
 .. code-block:: python
 
+	from pylab import *
+
 	print('pfiate')
 
 	pfiate

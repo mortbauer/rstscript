@@ -20,9 +20,12 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
         # test if project is new
         project_id = (options['input'],options['woutput'],options['toutput'])
         if project_id in self.server.projects:
-            pass
+            if self.server.projects[project_id].options != options:
+                self.server.projects[project_id] = Litrunner(options)
         else:
             self.server.projects[project_id] = Litrunner(options)
+        # now run the project
+        self.server.projects[project_id].run()
         print('served in "{0}" sec'.format(time.time()-t1))
         # send some response
         self.request.send(ujson.dumps(options).encode('utf-8'))
