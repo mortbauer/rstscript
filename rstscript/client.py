@@ -1,5 +1,6 @@
 import os
 import sys
+import ipdb
 import ujson
 import socket
 import select
@@ -75,6 +76,8 @@ def make_parser():
             help='specify the plugin directory')
     parser.add_argument('--no-plugins',action='store_true',
             help='disable all plugins')
+    parser.add_argument( "--foreground", action="store_true", default=False,
+                    help="don\'t detach")
     parser.add_argument("-d", "--debug", action="store_true", default=False,
                     help="Run in debugging mode.")
     parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,
@@ -86,8 +89,7 @@ def make_parser():
                     help='Specify the logging level')
     parser.add_argument('--version', action='version', version=rstscript.__version__)
 
-    parser.add_argument('-i','--input', dest='input',nargs=1,
-                    required=True,default=[sys.stdin], help='rstscript source file')
+    parser.add_argument('input', nargs='?', help='rstscript source file')
 
     parser.add_argument('-t',action='store_true',dest='tangle',help='tangle the document')
 
@@ -134,6 +136,32 @@ def make_initial_setup(configfilename):
     elif userinput == 'n':
         return False
 
+def parse_through_args(proc_form_args):
+    if '--formatter-opts' in proc_form_args:
+        i_f = proc_form_args.index('--formatter-opts')
+    else:
+        i_f = 0
+    if '--processor-opts' in proc_form_args:
+        i_p = proc_form_args.index('--processor-opts')
+    else:
+        i_p = 0
+    # if there are remaining arguments but non of the keys is specified i will
+    # take them for both
+    proc_args = []
+    form_args = []
+    if i_f == 0 and i_p == 0:
+        proc_args = proc_form_args
+        form_args = proc_form_args
+    elif i_f > i_p:
+        proc_args = proc_form_args[i_p+1:i_f]
+        form_args = proc_form_args[i_f+1:]
+    elif i_f < i_p:
+        proc_args = proc_form_args[i_p+1:]
+        form_args = proc_form_args[i_f+1:i_p]
+    proc_args.extend(proc_form_args[:min(i_f,i_p)])
+    form_args.extend(proc_form_args[:min(i_f,i_p)])
+    return proc_args,form_args
+
 def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
         logmaxmb=0,logbackups=1):
     logger = logging.getLogger(logname)
@@ -177,32 +205,42 @@ def main(argv=None):
         make_initial_setup(configs['conf'])
     else:
         configs.update(ujson.load(open(configs['conf'],'r')))
-    configs.update(vars(parser.parse_args(remaining_argv)))
-    # make the logger
-    logger = make_logger('rstscript.server',configs['logfile'],
-            loglevel=configs['loglevel'],debug=configs['debug'])
+    # parse main args
+    mainopts, throughargs = parser.parse_known_args(remaining_argv)
+    configs.update(vars(mainopts))
+    # parse through passing args
+    configs['proc_args'], configs['form_args'] = parse_through_args(throughargs)
+    # add the source directory to the config
+    configs['rootdir'] = os.path.abspath('.')
+    # make the file paths absolute
+    for x in ('input','woutput','toutput'):
+        if configs[x] and not os.path.isabs(configs[x]) :
+            configs[x] = os.path.join(configs['rootdir'],configs[x])
 
     # create a daemonizedserver object
-    d = daemonize.SocketServerDaemon(configs['socketfile'],configs['pidfile'],
-            logger,server.RstscriptHandler)
+    daemon = lambda : daemonize.SocketServerDaemon(configs,server.RstscriptHandler)
 
     # start/stop the server
     if configs['restart']:
+        d = daemon()
         try:
             d.stop()
             d.start()
         except:
             raise
     elif configs['stop']:
+        d = daemon()
         try:
             d.stop()
         except daemonize.DaemonizeNotRunningError as e:
-            logger.info(e)
+            sys.stderr.write(str(e))
     else:
-        try:
-            d.start()
-        except daemonize.DaemonizeAlreadyStartedError as e:
-            logger.info(e)
+        if not os.path.exists(configs['socketfile']):
+            d = daemon()
+            try:
+                d.start()
+            except daemonize.DaemonizeAlreadyStartedError as e:
+                sys.stderr.write(str(e))
 
     if not configs['stop']:
         # Connect to the server
@@ -212,14 +250,14 @@ def main(argv=None):
 
         # Send the data
         message = ujson.dumps(configs)
-        print('Sending : "%s"' % message)
+        print('\nSending : "%s"' % message)
         len_sent = sock.send(message.encode('utf-8'))
 
         # Receive a response
         ready = select.select([sock], [], [], 6)
         if ready:
             response = sock.recv(1024)
-            print('Received: "%s"' % response)
+            print('\nReceived: "%s"' % response.decode('utf-8'))
             # Clean up
         sock.close()
 
@@ -232,7 +270,6 @@ def main(argv=None):
     #elif configs['restart']:
         #rstscriptserver.stop()
         #rstscriptserver.start()
-
 
 if '__main__' == __name__:
     main()

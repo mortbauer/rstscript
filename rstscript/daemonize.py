@@ -4,8 +4,11 @@ import os
 import sys
 import abc
 import time
+import copy
 import atexit
 import signal
+import socket
+import logging
 import socketserver
 
 class DaemonizeError(Exception):
@@ -147,15 +150,74 @@ class Daemon(object,metaclass=abc.ABCMeta):
 
         It will be called after the process has been daemonized by
         start() or restart()."""
+
+def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
+        logmaxmb=0,logbackups=1):
+    logger = logging.getLogger(logname)
+    # setup the app logger
+    handlers = []
+    if not logmaxmb:
+        handlers.append(logging.FileHandler(logfile))
+    else:
+        from logging.handlers import RotatingFileHandler
+        handlers.append(RotatingFileHandler(logfile,
+            maxBytes=logmaxmb * 1024 * 1024, backupCount=logbackups))
+    if not quiet or debug:
+        # also log to stderr
+        handlers.append(make_color_handler())
+    formatter = logging.Formatter(
+            '%(levelname)s %(asctime)s %(name)s: %(message)s')
+    for handler in handlers:
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    if debug:
+        logger.setLevel('DEBUG')
+    else:
+        if hasattr(logging,loglevel):
+            logger.setLevel(getattr(logging,loglevel.upper()))
+        else:
+            logger.setLevel('WARNING')
+            logger.error('invalid logging level "{0}"'.format(loglevel))
+    return logger
+
+class RstscriptServer(socketserver.ThreadingMixIn,socketserver.UnixStreamServer):
+    def __init__(self, configs, RequestHandlerClass, logger):
+        self.logger = logger
+        self.plugins = self.import_plugins(configs['plugindir'])
+        self.projects = {}
+        self.configs = configs
+        socketserver.UnixStreamServer.__init__(self, configs['socketfile'], RequestHandlerClass)
+
+    def import_plugins(self,plugindir):
+        if os.path.exists(plugindir):
+            sys.path.insert(0, plugindir)
+            # get all py files and strip the extension
+            pyfiles = [x[:-3] for x in os.listdir(plugindir) if x.endswith('.py')]
+            # import the modules which we found in the plugin path
+            plugin_modules = {}
+            for module in pyfiles:
+                try:
+                    plugin_modules[module] = __import__(module)
+                except Exception as e:
+                    self.logger.error('skipping plugin "{0}": {1}'.format(module,e))
+            # remove added paths again
+            sys.path.remove(plugindir)
+            self.logger.info('loaded plugins from "{0}"'.format(plugindir))
+            return plugin_modules
+        else:
+            self.logger.warning('plugindir "{0}" doesn\'t exist'.format(plugindir))
+            return {}
+
 class SocketServerDaemon(Daemon):
 
-    def __init__(self,socketfile,pidfile,logger,handler,foreground=False):
-        self.logger = logger
-        self.sockfile = socketfile
-        self.pidfile = pidfile
-        self.started = False
+    def __init__(self,configs,handler):
+        self.logger = make_logger('rstscript.server',configs['logfile'],
+            loglevel=configs['loglevel'],debug=configs['debug'])
+        self.sockfile = configs['socketfile']
+        self.pidfile = configs['pidfile']
         self.handler = handler
-        self.foreground = foreground
+        self.foreground = configs['foreground']
+        self.configs = configs
 
     def start(self):
         # Check for a sockfile to see if the daemon already runs
@@ -176,7 +238,19 @@ class SocketServerDaemon(Daemon):
             if super().stop():
                 os.remove(self.sockfile)
 
+    def _del(self,path):
+        try:
+            os.remove(path)
+        except:
+            pass
+
     def run(self):
-        self.server = socketserver.ThreadingUnixStreamServer(self.sockfile,self.handler)
-        atexit.register(os.remove,self.sockfile)
+        atexit.register(self._del,self.sockfile)
+        # the configs could contain anything, we don't want input or output
+        # files here
+        serverconfigs = copy.copy(self.configs)
+        for x in ('input','toutput','woutput','figdir'):
+            if x in serverconfigs:
+                serverconfigs.pop(x)
+        self.server = RstscriptServer(serverconfigs,self.handler,self.logger)
         self.server.serve_forever()

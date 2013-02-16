@@ -247,3 +247,6 @@ class CompactFormatter(BaseFormatter):
             i += 1
 
 
+
+PythonProcessor.register()
+CompactFormatter.register()

@@ -496,7 +496,7 @@ def mainapp(pre_parser,remaining_argv,soft_defaults):
                 app_options.basename,'rst',force=app_options.force)
     if app_options.tangle and not app_options.toutput:
         app_options.toutput = guess_outputfile(app_options.inputpath,
-                app_options.basename,'py',force=app_options.force)
+                app_options.basename,'py',force=app_options..decode('utf-8')forc)
     # set a woutput directory if weaving
     if not app_options.noweave:
         app_options.woutputpath = os.path.split(app_options.woutput.name)[0]

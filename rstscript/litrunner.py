@@ -69,7 +69,7 @@ class Litrunner(object):
         # maybe a bit unusual, but seems to work
         if not ProcessorClass.name in self.processorClasses:
             self.processorClasses[ProcessorClass.name] = ProcessorClass
-            self.preargparser[ProcessorClass.name] = ProcessorClass.make_parser(self.options.proc_args)
+            self.preargparser[ProcessorClass.name] = ProcessorClass.make_parser(self.options['proc_args'])
         else:
             logger.error('processor "{0}" already known'.format(ProcessorClass.name))
 
@@ -77,18 +77,18 @@ class Litrunner(object):
         # maybe a bit unusual, but seems to work
         if not FormatterClass.name in self.postargparser:
             self.formatters[FormatterClass.name] = FormatterClass()
-            self.postargparser[FormatterClass.name] = FormatterClass.make_parser(self.options.form_args)
+            self.postargparser[FormatterClass.name] = FormatterClass.make_parser(self.options['form_args'])
         else:
             logger.error('processor "{0}" already known'.format(FormatterClass.name))
 
     def test_readiness(self):
-        if not self.options.processor in self.processorClasses:
+        if not self.options['processor'] in self.processorClasses:
             logger.error('command "{0}", set as default command is unknown,'
-                    'won\'t do anything'.format(self.options.processor))
+                    'won\'t do anything'.format(self.options['processor']))
             return False
-        if not self.options.formatter in self.formatters:
+        if not self.options['formatter'] in self.formatters:
             logger.error('command "{0}", set as default formatter is unknown,'
-                    'won\'t do anything'.format(self.options.formatter))
+                    'won\'t do anything'.format(self.options['formatter']))
             return False
         return True
 
@@ -140,10 +140,10 @@ class Litrunner(object):
             return def_command,parsers[def_command]([],linen)
 
         def get_pre_param(line,linen):
-            return get_param(line,self.preargparser,self.options.processor,linen)
+            return get_param(line,self.preargparser,self.options['processor'],linen)
 
         def get_post_param(line,linen):
-            return get_param(line,self.postargparser,self.options.formatter,linen)
+            return get_param(line,self.postargparser,self.options['formatter'],linen)
 
         for line in fileobject:
             line_start = line[:token_length]
@@ -217,7 +217,6 @@ class Litrunner(object):
             else:
                 logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
-
 
     def run(self):
         if not self.test_readiness():
