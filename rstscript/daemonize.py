@@ -11,6 +11,17 @@ import socket
 import logging
 import socketserver
 
+def info(type, value, tb):
+    # http://stackoverflow.com/a/242531/1607448
+    if hasattr(sys, 'ps1') or not sys.stderr.isatty():
+    # we are in interactive mode or we don't have a tty-like
+    # device, so we call the default hook
+        sys.__excepthook__(type, value, tb)
+    else:
+        import traceback
+        # we are NOT in interactive mode, print the exception…
+        traceback.print_exception(type, value, tb)
+
 class DaemonizeError(Exception):
     pass
 class DaemonizeAlreadyStartedError(Exception):
@@ -72,7 +83,6 @@ class Daemon(object,metaclass=abc.ABCMeta):
                 self.run()
             except Exception as e:
                 self.logger.error(e)
-
     def start(self):
         """Starts a daemonized process
 
@@ -90,7 +100,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
             if not self.foreground:
                 self.daemonize()
             else:
-                from rstscript import debug
+                sys.excepthook = info
                 self.run()
             # only execute for parent
             if os.getpid() == pid:
@@ -250,11 +260,13 @@ class SocketServerDaemon(Daemon):
 
     def run(self):
         atexit.register(self._del,self.sockfile)
-        # the configs could contain anything, we don't want input or output
-        # files here
-        serverconfigs = copy.copy(self.configs)
-        for x in ('input','toutput','woutput','figdir'):
-            if x in serverconfigs:
-                serverconfigs.pop(x)
-        self.server = RstscriptServer(serverconfigs,self.handler,self.logger)
+        # import maplotlib if not disabled, because backend must be choosen
+        # before pyplot get's imported
+        if not self.configs['nomatplotlib']:
+            try:
+                import matplotlib
+                matplotlib.use('Agg')
+            except:
+                self.logger.error('couldn\'t import matplotlib')
+        self.server = RstscriptServer(self.configs,self.handler,self.logger)
         self.server.serve_forever()

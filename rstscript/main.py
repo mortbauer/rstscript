@@ -73,6 +73,8 @@ def make_server_parser():
     stop = subparsers.add_parser('stop',help='stop the server')
     restart = subparsers.add_parser('restart',help='restart the server')
 
+    parser.add_argument("--nomatplotlib",action='store_true', dest="nomatplotlib",
+            help="disable the import of matplotlib, can cause problems if plot nevertheless then")
     parser.add_argument("--pdb",action='store_true', dest="pdb",
             help="debug with pdb or ipdb")
     parser.add_argument( "--foreground", action="store_true", default=False,
@@ -94,15 +96,13 @@ def make_client_parser():
             help="specify config file")
 
     parser = argparse.ArgumentParser(parents=[pre_parser])
-    parser.add_argument('-i','--input', required=True,
+    parser.add_argument('-i','--input', nargs='?',
             help='rstscript source file')
     parser.add_argument("-ow", dest="woutput", nargs='?',
             help="output file for weaving")
-    parser.add_argument('--noweave',action='store_true',dest='noweave',
-            help='don\'t weave the document')
-    parser.add_argument('-t',action='store_true',dest='tangle',
-            help='tangle the document')
-    parser.add_argument("-ot", dest="toutput", nargs='?',
+    parser.add_argument('--noweave',action='store_true', default=False,
+            dest='noweave', help='don\'t weave the document')
+    parser.add_argument("-ot", dest="toutput", default=None, nargs='?',
             help="output file for tangling")
     parser.add_argument("--figure-directory", dest='figdir',
                     action="store", default='_figures',
@@ -218,12 +218,14 @@ def client_main(argv=None):
     # additional options are in a list we don't want that
     if configs['options']:
         configs['options'] = configs['options'][0]
-    # add current tty info
-    for std in ('stdin','stdout','stderr'):
-        fileno = getattr(sys,std).fileno()
-        if os.isatty(fileno):
-            configs[std] = os.ttyname(fileno)
-
+    # if no input or output provided use stdin and stdout
+    if not configs['input']:
+        if os.isatty(0):
+            raise rstscript.RstscriptException('you need to specify a input filename with "-i"')
+        configs['input'] = '/proc/{0}/fd/0'.format(os.getpid())
+    if not configs['woutput']:
+        configs['woutput'] = '/proc/{0}/fd/1'.format(os.getpid())
+        configs['quiet'] = True # well we pipe already something here so logger shut up
     # Connect to the server
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
@@ -235,7 +237,7 @@ def client_main(argv=None):
     sock.setblocking(0)
 
     # Send the data
-    message = ujson.dumps(configs)
+    message = ujson.dumps([os.getpid(),configs])
     #print('\nSending : "%s"' % message)
     len_sent = sock.send(message.encode('utf-8'))
 

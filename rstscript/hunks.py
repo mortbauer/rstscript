@@ -28,15 +28,14 @@ class Empty(Node):
 
 
 class Text(Node):
-    template = '\n{text}\n'
     def __init__(self,text):
         self.text = text.strip()
     @property
     def formatted(self):
-        return self.template.format(text=self.text)
+        return '\n{}\n'.format(self.text)
 
 class CodeBlock(Node):
-    template = '\n.. code-block:: {lang}\n\n{code}\n'
+    template = '\n\n.. code-block:: {lang}\n\n{code}\n\n'
     def __init__(self,code,label='',language='python'):
         self.code = textwrap.indent(code.strip(),'\t')
         self.lang = language
@@ -75,8 +74,10 @@ class CodeIn(CodeBlock):
 
 class Figure(Node):
     template = ('\n.. _{self.label}:\n\n.. figure:: {self.path}\n\t:alt: {self.alt}\n\t:width: {self.width}'
+            '\n\n\t{self.desc}\n')
+    template2 = ('\n.. _{self.label}:\n\n.. figure:: {self.path}\n\t:alt: {self.alt}\n\t:width: {self.width}'
             '\n\t:height: {self.height}\n\n\t{self.desc}\n')
-    def __init__(self,path,label='',alt='',width='100mm',height='100mm',desc=''):
+    def __init__(self,path,label='',alt='',width='100%',height='100%',desc=''):
         self.path = path
         self.label = label
         self.alt = alt
@@ -85,8 +86,14 @@ class Figure(Node):
         self.desc = desc
     @property
     def formatted(self):
-        return self.template.format(self=self)
+        if self.height:
+            return self.template2.format(self=self)
+        else:
+            return self.template.format(self=self)
 
     @property
     def simple(self):
-        return self.template.format(self=self)
+        if self.height:
+            return self.template2.format(self=self)
+        else:
+            return self.template.format(self=self)

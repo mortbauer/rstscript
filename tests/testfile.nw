@@ -4,9 +4,9 @@ Hallllo
 Hallo Martin 
 Hallo Susi
 
-%<<
+%<{"label":"testplot","desc":"This is my first auto test plot"}
 from pylab import *
-#plot(1,2)
+plot(1,2)
 print('pfiate')
 print('pfiate')
 a='hhhhhhhh'
@@ -16,11 +16,11 @@ b = 2*4
 c = myfunc()
 d = myfunc
 d = myfunc
-%>>compact --desc 'My shiny cool figure'
+%>compact --desc 'My shiny cool figure'
 
 Hallo Martin 
 Hallo Susi
-%<<{"proc":"python"}
+%<{"proc":"python"}
 #from pylab import *
 #plot(1,2)
 print('pfiate')
@@ -31,8 +31,8 @@ def myfunc():
 b = 2*4
 c = myfunc()
 d = myfunc
-%>>--label 'myfigure' -x
+%>--label 'myfigure' -x
 
-see also `None_3_1`_
+see also `testplot`_
 
 sdlgs

@@ -58,19 +58,19 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
         t1 = time.time()
         # get the options
         data = self.request.recv(1024)
-        options = ujson.loads(data)
+        pid,options = ujson.loads(data)
         # set default job options
         for x in self.server.configs:
             options.setdefault(x,self.server.configs[x])
         # if debugging mode
         stdout = None
-        if not options['quiet'] and options['stdout']:
+        if not options['quiet']:
             # getlogger
             self.logger = logging.getLogger('rstscript.handler.{0}'.
                     format(threading.current_thread().name))
             #self.logger.addHandler(logging.StreamHandler(open(options['stdout'],'w')))
             formatter = logging.Formatter('%(levelname)s %(name)s: %(message)s')
-            stdout = open(options['stdout'],'w')
+            stdout = open('/proc/{0}/fd/2'.format(pid),'w')
             handler = ColorizingStreamHandler(stdout)
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
@@ -111,7 +111,3 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
         self.request.send(ujson.dumps(options).encode('utf-8'))
         self.server.logger.info('served in "{0}" sec'.format(time.time()-t1))
         return
-
-#def handler(clientsocket):
-    #data = clientsocket.recv(1024).decode('utf-8')
-    #clientsocket.send('ok "{0}"'.format(data).encode('utf-8'))

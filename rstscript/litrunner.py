@@ -40,7 +40,7 @@ class Litrunner(object):
     def openfiles(self):
         try:
             self.input = open(self.options['input'],'r')
-            if self.options['tangle']:
+            if self.options['toutput']:
                 self.toutput = open(self.options['toutput'],'w')
             if not self.options['noweave']:
                 self.woutput.seek(0)
@@ -52,7 +52,7 @@ class Litrunner(object):
     def closefiles(self):
         try:
             self.input.close()
-            if self.options['tangle']:
+            if self.options['toutput']:
                 self.toutput.close()
             if not self.options['noweave']:
                 with open(self.options['woutput'],'w') as f:
@@ -103,7 +103,6 @@ class Litrunner(object):
         else:
             self.logger.error('there is no processor named "{0}",'
             'i will skip the chunk'.format(name))
-            return self.processors['none'].process
 
     def get_formatter(self,name):
         if name in self.formatters:
@@ -111,7 +110,6 @@ class Litrunner(object):
         else:
             self.logger.error('there is no formatter named "{0}",'
             'i will try the default one, will skip the chunk'.format(name))
-            return self.formatters['none'].process
 
     def read(self,fileobject,start='%<',end='%>',comment='%%'):
         """This function returns a generator
@@ -153,7 +151,7 @@ class Litrunner(object):
                 if chunktype == 'code':
                     options = getoptions(content.readline().strip(),linenumber)
                     raw = content.read()
-                    if self.options['tangle']:
+                    if hasattr(self,'toutput'):
                         self.toutput.write(raw)
                 else:
                     raw = content.read()
@@ -164,7 +162,7 @@ class Litrunner(object):
                 yield chunk
             else:
                 # tangling doens't care about caching
-                if self.options['tangle']:
+                if self.options['toutput']:
                     # skip options
                     if chunktype == 'code':
                         content.readline()
@@ -226,8 +224,9 @@ class Litrunner(object):
             if chunk.type == 'code':
                 processor = self.get_processor(
                         chunk.options.get('proc',self.options.get('proc','python')))
-                for cchunk in processor(chunk):
-                    yield cchunk
+                if processor:
+                    for cchunk in processor(chunk):
+                        yield cchunk
             elif chunk.type == 'text':
                 yield processors.CChunk(chunk,[hunks.Text(chunk.raw)])
             else:
@@ -239,7 +238,8 @@ class Litrunner(object):
             if cchunk.chunk.type == 'code':
                 formatter = self.get_formatter(
                         cchunk.chunk.options.get('form',self.options.get('form','compact')))
-                yield from formatter(cchunk)
+                if formatter:
+                    yield from formatter(cchunk)
             elif cchunk.chunk.type == 'text':
                 yield cchunk.chunk.number,[cchunk.hunks[0].formatted]
             else:
@@ -254,14 +254,14 @@ class Litrunner(object):
 
                 if not self.options['noweave']:
                     for chunkn,formatted in self.format(self.weave(self.read(self.input))):
-                        if chunkn > 0:
+                        if chunkn > 0 and self.chunks[chunkn-1][1] > 0:
                             self.woutput.seek(self.chunks[chunkn-1][1])
                         for hunk in formatted:
                             self.woutput.write(hunk)
                             self.chunks[chunkn][1] = self.woutput.tell()
                     if self.woutput.tell():
                         self.woutput.truncate()
-                elif self.options['noweave'] and self.options['tangle']:
+                elif self.options['noweave'] and self.options['toutput']:
                     for formatted in self.read(self.input):
                         pass
                 else:

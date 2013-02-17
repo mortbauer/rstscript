@@ -149,22 +149,27 @@ class PythonProcessor(BaseProcessor):
 
         #return hunks.CHunk(cs,coo,cout,ce,ct,self.globallocal)
 
-    def _saveallfigures(self,label,desc):
+    def _saveallfigures(self,options,number):
         if not self.plt:
             try:
-                import matplotlib.pyplot
-                self.plt = matplotlib.pyplot
+                from matplotlib import pyplot
+                self.plt = pyplot
             except:
                 raise rstscript.RstscriptException('you need matplotlib for using autofigure')
         for num in self.plt.get_fignums():
             if num > 1:
                 logger.error('there are several figures in this chunks, not supported so far')
             else:
+                label = options.get('label',number)
                 fig = self.plt.figure(num)
                 name = '{0}.png'.format(label)
                 figpath =os.path.join(self.get_figdir(),name)
                 fig.savefig(figpath)
-                yield hunks.Figure(figpath,label=os.path.splitext(name)[0],desc=desc)
+                yield hunks.Figure(figpath,label=label,
+                        desc=options.get('desc',''),
+                        width=options.get('width','100%'),
+                        height=options.get('height'),
+                        alt=options.get('alt',''))
 
     def process(self,chunk):
         tree = ast.parse(chunk.raw)
@@ -177,9 +182,7 @@ class PythonProcessor(BaseProcessor):
         # autosave figures TODO
         if chunk.options.get('autofigure',False):
             try:
-                label = chunk.options['label']
-                for fig in self._saveallfigures(label,
-                        chunk.options['desc']):
+                for fig in self._saveallfigures(chunk.options,chunk.number):
                     lhunks.append(fig)
                 self.plt.close('all')
             except Exception as e:
@@ -225,14 +228,20 @@ class CompactFormatter(BaseFormatter):
     def process(self,cchunk):
         i = 0
         l = []
+        options = cchunk.chunk.options
+        decide = lambda i,hunk: hunk.formatted if i == 0 else hunk.simple
         for hunk in cchunk.hunks:
-            i += 1
-            if not hunk.simple:
+            t = type(hunk)
+            if not hunk.simple or options.get('s',False):
                 continue
-            if i == 1:
-                l.append(self._decide(hunk,cchunk.chunk.options).formatted)
+            elif t == hunks.CodeResult and not options.get('a',False):
+                continue
+            elif t == hunks.CodeIn and not options.get('e',False):
+                continue
             else:
-                l.append(self._decide(hunk,cchunk.chunk.options).simple)
+                l.append(decide(i,hunk))
+                i += 1
+
         yield cchunk.chunk.number,l
 
 
