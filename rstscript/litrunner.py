@@ -205,10 +205,20 @@ class Litrunner(object):
     def run(self):
         self.logger.info('Run Litrunner with options "{0}"'.
                 format(pprint.pformat(self.options)))
-
-        self.input = open(self.options['input'],'r')
+        try:
+            self.input = open(self.options['input'],'r')
+        except:
+            self.logger.warning('file "{0}" couldn\'t be opened for reading'
+                    .format(self.options['input']))
+            return False
         if not self.options['noweave'] and not self.options['tangle']:
-            self.woutput = open(self.options['woutput'],'w')
+            try:
+                self.woutput = open(self.options['woutput'],'w')
+            except:
+                self.logger.warning('file "{0}" couldn\'t be opened for writing'
+                        .format(self.options['input']))
+                return False
+
             self.logger.info('starting to weave the document')
             try:
                 for formatted in self.format(self.weave(self.read(self.input))):
@@ -216,8 +226,18 @@ class Litrunner(object):
             finally:
                 self.woutput.close()
         elif not self.options['noweave'] and self.options['tangle']:
-            self.woutput = open(self.options['woutput'],'w')
-            self.toutput = open(self.options['toutput'],'w')
+            try:
+                self.woutput = open(self.options['woutput'],'w')
+            except:
+                self.logger.warning('file "{0}" couldn\'t be opened for writing'
+                        .format(self.options['input']))
+                return False
+            try:
+                self.toutput = open(self.options['toutput'],'w')
+            except:
+                self.logger.warning('file "{0}" couldn\'t be opened for writing'
+                        .format(self.options['input']))
+                return False
             self.logger.info('starting to weave and tangle the document')
             try:
                 for formatted in self.format(self.weave(self.tangle(self.read(self.input)))):
@@ -226,7 +246,12 @@ class Litrunner(object):
                 self.woutput.close()
                 self.toutput.close()
         elif self.options['noweave'] and self.options['tangle']:
-            self.toutput = open(self.options['toutput'],'w')
+            try:
+                self.toutput = open(self.options['toutput'],'w')
+            except:
+                self.logger.warning('file "{0}" couldn\'t be opened for writing'
+                        .format(self.options['input']))
+                return False
             self.logger.info('starting to tangle the document')
             try:
                 for formatted in self.tangle(self.read(self.options['input'][0])):

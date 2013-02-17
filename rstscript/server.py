@@ -63,32 +63,52 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
         for x in self.server.configs:
             options.setdefault(x,self.server.configs[x])
         # if debugging mode
-        if options['debug'] and options['stdout']:
+        stdout = None
+        if not options['quiet'] and options['stdout']:
             # getlogger
             self.logger = logging.getLogger('rstscript.handler.{0}'.
                     format(threading.current_thread().name))
             #self.logger.addHandler(logging.StreamHandler(open(options['stdout'],'w')))
             formatter = logging.Formatter('%(levelname)s %(name)s: %(message)s')
-            handler = ColorizingStreamHandler(open(options['stdout'],'w'))
+            stdout = open(options['stdout'],'w')
+            handler = ColorizingStreamHandler(stdout)
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
-            self.logger.setLevel(getattr(logging,options['loglevel'].upper(),'DEBUG'))
+            if options['debug']:
+                self.logger.setLevel('DEBUG')
+            else:
+                self.logger.setLevel(getattr(logging,options['loglevel'].upper(),'WARNING'))
+            # add also the server handlers, so logging to the central log file
+            # happens as well
+            for handler in self.server.logger.handlers:
+                self.logger.addHandler(handler)
         else:
             # log to central log file
             self.logger = self.server.logger
         self.logger.info('current running threads "{0}"'.format(len(threading.enumerate())))
         # test if project is new
         project_id = (options['input'],options['woutput'],options['toutput'])
-        if project_id in self.server.projects:
-            if self.server.projects[project_id].options != options:
+        # do the work
+        try:
+            if project_id in self.server.projects:
+                if self.server.projects[project_id].options != options:
+                    self.server.projects[project_id] = Litrunner(options,self.logger)
+                else:
+                    # the logger needs to be renewed, has info from old thread
+                    # and so on
+                    self.server.projects[project_id].logger = self.logger
+            else:
                 self.server.projects[project_id] = Litrunner(options,self.logger)
-        else:
-            self.server.projects[project_id] = Litrunner(options,self.logger)
-        # now run the project
-        self.server.projects[project_id].run()
-        print('served in "{0}" sec'.format(time.time()-t1))
+            # now run the project
+            self.server.projects[project_id].run()
+        except Exception as e:
+            self.logger.error('an unexpected error occured "{0}"'.format(e))
+        finally:
+            if stdout:
+                stdout.close()
         # send some response
         self.request.send(ujson.dumps(options).encode('utf-8'))
+        self.logger.info('served in "{0}" sec'.format(time.time()-t1))
         return
 
 #def handler(clientsocket):

@@ -218,7 +218,8 @@ def client_main(argv=None):
         if configs[x] and not os.path.isabs(configs[x]) :
             configs[x] = os.path.join(configs['rootdir'],configs[x])
     # additional options are in a list we don't want that
-    configs['options'] = configs['options'][0]
+    if configs['options']:
+        configs['options'] = configs['options'][0]
     # add current tty info
     for std in ('stdin','stdout','stderr'):
         fileno = getattr(sys,std).fileno()
