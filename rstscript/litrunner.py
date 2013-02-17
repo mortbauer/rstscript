@@ -33,10 +33,38 @@ class Litrunner(object):
         self.defaults = self.set_defaults()
         self.logger.info(self.defaults)
         self.register_plugins()
+        self.woutput = StringIO()
+        # set up a memory of chunks
+        self.chunks = []
+
+    def openfiles(self):
+        try:
+            self.input = open(self.options['input'],'r')
+            if self.options['tangle']:
+                self.toutput = open(self.options['toutput'],'w')
+            if not self.options['noweave']:
+                self.woutput.seek(0)
+            return True
+        except Exception as e:
+            self.logger.warning(e)
+            return False
+
+    def closefiles(self):
+        try:
+            self.input.close()
+            if self.options['tangle']:
+                self.toutput.close()
+            if not self.options['noweave']:
+                with open(self.options['woutput'],'w') as f:
+                    f.write(self.woutput.getvalue())
+            return True
+        except Exception as e:
+            self.logger.warning(e)
+            return False
 
     def set_defaults(self):
         try:
-            if self.options['options']:
+            if 'options' in self.options and self.options['options']:
                 return ujson.loads(self.options['options'])
             else:
                 return {}
@@ -85,11 +113,14 @@ class Litrunner(object):
             'i will try the default one, will skip the chunk'.format(name))
             return self.formatters['none'].process
 
-    def read(self,fileobject):
+    def read(self,fileobject,start='%<',end='%>',comment='%%'):
         """This function returns a generator
         It produces pieces from a fileobject, delimited with *chunk_start* and
         *chunk_end* tokens.
         """
+
+        if len(start) != len(end) != len(comment):
+            raise RstscriptException('start end end tokens must have equal length')
 
         #: holder of real content
         content = StringIO()
@@ -99,23 +130,51 @@ class Litrunner(object):
         chunkn = 0
         #: line number of chunk start
         linecounter = 1
-        linechunk = linecounter
+        linen_of_chunkstart = linecounter
         #: delimiter, and escaped delimiters
-        chunk_start = '%<<'
-        chunk_end = '%>>'
-        token_length = 3
+        token_length = len(start)
 
-        def buildchunk(number,linenumber,chunktype,options,content):
+        def same(chunkn,content):
+            chunkhash = hash(content.getvalue())
+            if len(self.chunks) > chunkn and self.chunks[chunkn][0] == chunkhash:
+                return True
+            elif len(self.chunks) > chunkn:
+                self.chunks = self.chunks[:chunkn] # reset all further chunks
+                self.chunks.append([chunkhash,-1])
+                return False
+            else:
+                self.chunks.append([chunkhash,-1])
+                return False
+
+        def buildchunk(number,linenumber,chunktype,content):
             content.truncate()
-            chunk = Chunk(number,linenumber,chunktype,options,content.getvalue())
             content.seek(0)
-            self.logger.info(chunk)
-            return chunk
+            if not same(number,content):
+                if chunktype == 'code':
+                    options = getoptions(content.readline().strip(),linenumber)
+                    raw = content.read()
+                    if self.options['tangle']:
+                        self.toutput.write(raw)
+                else:
+                    raw = content.read()
+                    options = {}
+                chunk = Chunk(number,linenumber,chunktype,options,raw)
+                content.seek(0)
+                self.logger.info(chunk)
+                yield chunk
+            else:
+                # tangling doens't care about caching
+                if self.options['tangle']:
+                    # skip options
+                    if chunktype == 'code':
+                        content.readline()
+                    self.toutput.write(content.read())
+                self.logger.info('chunk "{0}" is unchanged'.format(number))
 
         def getoptions(line,linenumber):
             try:
-                if line.strip():
-                    d = ujson.loads(line.strip())
+                if line:
+                    d = ujson.loads(line)
                     for key in self.defaults:
                         d.setdefault(key,self.defaults[key])
                     self.logger.info(d)
@@ -127,39 +186,40 @@ class Litrunner(object):
                         .format(linenumber,e,repr(line.strip())))
                 return self.defaults
 
-        options = {}
         for line in fileobject:
             line_start = line[:token_length]
-
             # on start of chunk delimiter yield text
-            if line_start == chunk_start:
+            if line_start == start:
                 if content.tell() != 0:
-                    yield buildchunk(chunkn,linechunk,'text',{},content)
-                options = getoptions(line[token_length:],linecounter)
+                    yield from buildchunk(chunkn,linen_of_chunkstart,'text',content)
                 delimtercounter += 1
-                linechunk = linecounter
+                linen_of_chunkstart = linecounter
                 chunkn += 1
+                content.write(line[token_length:])
             # on end of chunk delimiter yield code
-            elif line_start == chunk_end:
+            elif line_start == end:
                 if content.tell() != 0:
-                    yield buildchunk(chunkn,linechunk,'code',options,content)
+                    yield from buildchunk(chunkn,linen_of_chunkstart,'code',content)
                 delimtercounter -= 1
-                linechunk = linecounter + 1
+                linen_of_chunkstart = linecounter + 1
                 chunkn += 1
-            # normal
+            # remove the comment
+            elif line_start == comment:
+                content.write(line[token_length:])
+                print(line[token_length:])
             else:
                 content.write(line)
 
+            # delimiter counter is 0 in text chunks and 1 in code chunks
+            # if it is smaller or bigger it must be an error
             if delimtercounter > 1 or delimtercounter < 0:
                 msg = 'missing delimiter before line {}'
                 raise GeneratorExit(msg.format(linecounter))
 
             linecounter += 1
 
-        content.truncate()
         if content.tell() != 0:
-            yield buildchunk(chunkn,linechunk,'text',{},content)
-
+            yield from buildchunk(chunkn,linen_of_chunkstart,'text',content)
 
     def weave(self,chunks):
         for chunk in chunks:
@@ -172,23 +232,7 @@ class Litrunner(object):
                 yield processors.CChunk(chunk,[hunks.Text(chunk.raw)])
             else:
                 self.logger.error('unsupported chunk type {0}'.
-
                         format(chunk.type))
-
-    def tangle(self,chunks):
-        """ takes the unprocessed chunks, how the reader chunks them, only
-        needs information if the chunk is code or text, so minimal processing
-        before. It writes the code chunks unchanged to the tangle output file
-        and  yields the same chunks coming in unchanged."""
-        for chunk in chunks:
-            if chunk.type == 'code':
-                self.toutput.write(chunk.raw)
-            elif chunk.type == 'text':
-                pass
-            else:
-                self.logger.error('unsupported chunk type {0}'.
-                        format(chunk.type))
-            yield chunk
 
     def format(self,cchunks):
         for cchunk in cchunks:
@@ -197,70 +241,38 @@ class Litrunner(object):
                         cchunk.chunk.options.get('form',self.options.get('form','compact')))
                 yield from formatter(cchunk)
             elif cchunk.chunk.type == 'text':
-                yield cchunk.hunks[0].formatted
+                yield cchunk.chunk.number,[cchunk.hunks[0].formatted]
             else:
                 self.logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
 
     def run(self):
-        self.logger.info('Run Litrunner with options "{0}"'.
-                format(pprint.pformat(self.options)))
-        try:
-            self.input = open(self.options['input'],'r')
-        except:
-            self.logger.warning('file "{0}" couldn\'t be opened for reading'
-                    .format(self.options['input']))
-            return False
-        if not self.options['noweave'] and not self.options['tangle']:
+        if self.openfiles():
             try:
-                self.woutput = open(self.options['woutput'],'w')
-            except:
-                self.logger.warning('file "{0}" couldn\'t be opened for writing'
-                        .format(self.options['input']))
-                return False
+                self.logger.info('Run Litrunner with options "{0}"'.
+                        format(pprint.pformat(self.options)))
 
-            self.logger.info('starting to weave the document')
-            try:
-                for formatted in self.format(self.weave(self.read(self.input))):
-                    self.woutput.write(formatted)
-            finally:
-                self.woutput.close()
-        elif not self.options['noweave'] and self.options['tangle']:
-            try:
-                self.woutput = open(self.options['woutput'],'w')
-            except:
-                self.logger.warning('file "{0}" couldn\'t be opened for writing'
-                        .format(self.options['input']))
+                if not self.options['noweave']:
+                    for chunkn,formatted in self.format(self.weave(self.read(self.input))):
+                        if chunkn > 0:
+                            self.woutput.seek(self.chunks[chunkn-1][1])
+                        for hunk in formatted:
+                            self.woutput.write(hunk)
+                            self.chunks[chunkn][1] = self.woutput.tell()
+                    if self.woutput.tell():
+                        self.woutput.truncate()
+                elif self.options['noweave'] and self.options['tangle']:
+                    for formatted in self.read(self.input):
+                        pass
+                else:
+                    self.logger.warning('no job specified, don\'t do anything')
+                self.closefiles()
+                return True
+            except Exception as e:
+                self.logger.error(e)
+                self.closefiles()
+                raise e
                 return False
-            try:
-                self.toutput = open(self.options['toutput'],'w')
-            except:
-                self.logger.warning('file "{0}" couldn\'t be opened for writing'
-                        .format(self.options['input']))
-                return False
-            self.logger.info('starting to weave and tangle the document')
-            try:
-                for formatted in self.format(self.weave(self.tangle(self.read(self.input)))):
-                    self.woutput.write(formatted)
-            finally:
-                self.woutput.close()
-                self.toutput.close()
-        elif self.options['noweave'] and self.options['tangle']:
-            try:
-                self.toutput = open(self.options['toutput'],'w')
-            except:
-                self.logger.warning('file "{0}" couldn\'t be opened for writing'
-                        .format(self.options['input']))
-                return False
-            self.logger.info('starting to tangle the document')
-            try:
-                for formatted in self.tangle(self.read(self.options['input'][0])):
-                    pass
-            finally:
-                self.toutput.close()
         else:
-            self.logger.info('no job specified, don\'t do anything')
-        self.input.close()
-
-        return True
+            return False
 

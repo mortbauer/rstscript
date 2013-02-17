@@ -8,7 +8,6 @@ import select
 import pkgutil
 import argparse
 import rstscript
-from profilehooks import profile
 
 from rstscript import daemonize
 from rstscript import server
@@ -193,7 +192,6 @@ def server_main(argv=None):
             sys.exit(1)
 
 
-#@profile
 def client_main(argv=None):
     # read deafult configs
     configs = yaml.load(pkgutil.get_data(__name__,'defaults/config.yml').decode('utf-8'))

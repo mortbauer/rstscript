@@ -157,11 +157,14 @@ class PythonProcessor(BaseProcessor):
             except:
                 raise rstscript.RstscriptException('you need matplotlib for using autofigure')
         for num in self.plt.get_fignums():
-            fig = self.plt.figure(num)
-            name = '{0}_{1}.png'.format(label,num)
-            figpath =os.path.join(self.get_figdir(),name)
-            fig.savefig(figpath)
-            yield hunks.Figure(figpath,label=os.path.splitext(name)[0],desc=desc)
+            if num > 1:
+                logger.error('there are several figures in this chunks, not supported so far')
+            else:
+                fig = self.plt.figure(num)
+                name = '{0}.png'.format(label)
+                figpath =os.path.join(self.get_figdir(),name)
+                fig.savefig(figpath)
+                yield hunks.Figure(figpath,label=os.path.splitext(name)[0],desc=desc)
 
     def process(self,chunk):
         tree = ast.parse(chunk.raw)
@@ -174,7 +177,7 @@ class PythonProcessor(BaseProcessor):
         # autosave figures TODO
         if chunk.options.get('autofigure',False):
             try:
-                label = '{0}_{1}'.format(chunk.options['label'],chunk.number)
+                label = chunk.options['label']
                 for fig in self._saveallfigures(label,
                         chunk.options['desc']):
                     lhunks.append(fig)
@@ -194,7 +197,7 @@ class NoneFormatter(BaseFormatter):
 
     def process(self,cchunk):
         for hunk in cchunk.hunks:
-            yield hunk.simple
+            yield [hunk.simple for hunk in cchunk.hunks if hunk.simple]
 
 class CompactFormatter(BaseFormatter):
     name = 'compact'
@@ -221,12 +224,16 @@ class CompactFormatter(BaseFormatter):
 
     def process(self,cchunk):
         i = 0
+        l = []
         for hunk in cchunk.hunks:
-            if i == 0:
-                yield self._decide(hunk,cchunk.chunk.options).formatted
-            else:
-                yield self._decide(hunk,cchunk.chunk.options).simple
             i += 1
+            if not hunk.simple:
+                continue
+            if i == 1:
+                l.append(self._decide(hunk,cchunk.chunk.options).formatted)
+            else:
+                l.append(self._decide(hunk,cchunk.chunk.options).simple)
+        yield cchunk.chunk.number,l
 
 
 
