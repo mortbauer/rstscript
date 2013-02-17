@@ -197,9 +197,16 @@ class RstscriptServer(socketserver.ThreadingMixIn,socketserver.UnixStreamServer)
             plugin_modules = {}
             for module in pyfiles:
                 try:
-                    plugin_modules[module] = __import__(module)
+                    mod = __import__(module)
+                    if not hasattr(mod, 'setup'):
+                        self.logger.warn('plugin %r has no setup() function; '
+                                'won\'t load it' % extension)
+                    else:
+                        mod.setup()
+                        plugin_modules[module] = mod
                 except Exception as e:
                     self.logger.error('skipping plugin "{0}": {1}'.format(module,e))
+
             # remove added paths again
             sys.path.remove(plugindir)
             self.logger.info('loaded plugins from "{0}"'.format(plugindir))
