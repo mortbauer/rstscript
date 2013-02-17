@@ -103,12 +103,13 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
             self.server.projects[project_id].run()
         except Exception as e:
             self.logger.error('an unexpected error occured "{0}"'.format(e))
+            raise e
         finally:
             if stdout:
                 stdout.close()
         # send some response
         self.request.send(ujson.dumps(options).encode('utf-8'))
-        self.logger.info('served in "{0}" sec'.format(time.time()-t1))
+        self.server.logger.info('served in "{0}" sec'.format(time.time()-t1))
         return
 
 #def handler(clientsocket):

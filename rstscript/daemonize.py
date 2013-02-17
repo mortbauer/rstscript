@@ -162,9 +162,6 @@ def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
         from logging.handlers import RotatingFileHandler
         handlers.append(RotatingFileHandler(logfile,
             maxBytes=logmaxmb * 1024 * 1024, backupCount=logbackups))
-    if not quiet or debug:
-        # also log to stderr
-        handlers.append(make_color_handler())
     formatter = logging.Formatter(
             '%(levelname)s %(asctime)s %(name)s: %(message)s')
     for handler in handlers:
