@@ -8,11 +8,13 @@ Hallo Susi
 from pylab import *
 #plot(1,2)
 print('pfiate')
+print('pfiate')
 a='hhhhhhhh'
 def myfunc():
     return 5*5
 b = 2*4
 c = myfunc()
+d = myfunc
 d = myfunc
 %>>compact --desc 'My shiny cool figure'
 
@@ -22,7 +24,8 @@ Hallo Susi
 #from pylab import *
 #plot(1,2)
 print('pfiate')
-a='hhhhhhhh'
+print('pfiate')
+a='hhhhhhhhj'
 def myfunc():
     return 5*5
 b = 2*4
