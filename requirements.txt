@@ -1,5 +1,6 @@
 colorama
 ujson
+PyYaml
 argparse>=1.2
 
 # Meta Programming in Python
