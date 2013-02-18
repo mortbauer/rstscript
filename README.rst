@@ -23,12 +23,12 @@ The following ``RstScript`` snippet::
   A very basic RstScript example
   ##############################
 
-  %<<python -a -e -l
+  %<{a:true,e:true}
   a = 'Hello World'
   b = 6
   c = b * 7
   print(a)
-  %>>
+  %>
 
   This is some `rest`_ with embeded code chunks.
 
