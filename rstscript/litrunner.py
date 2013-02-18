@@ -31,7 +31,6 @@ class Litrunner(object):
         self.options = app_options
         self.logger = logger
         self.defaults = self.set_defaults()
-        self.logger.info(self.defaults)
         self.register_plugins()
         self.woutput = StringIO()
         # set up a memory of chunks

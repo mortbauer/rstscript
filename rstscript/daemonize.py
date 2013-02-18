@@ -11,6 +11,8 @@ import socket
 import logging
 import socketserver
 
+from rstscript import main
+
 def info(type, value, tb):
     # http://stackoverflow.com/a/242531/1607448
     if hasattr(sys, 'ps1') or not sys.stderr.isatty():
@@ -190,37 +192,11 @@ def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
 class RstscriptServer(socketserver.ThreadingMixIn,socketserver.UnixStreamServer):
     def __init__(self, configs, RequestHandlerClass, logger):
         self.logger = logger
-        self.plugins = self.import_plugins(configs['plugindir'])
+        self.plugins = main.import_plugins(configs['plugindir'],self.logger)
         self.projects = {}
         self.configs = configs
         socketserver.UnixStreamServer.__init__(self, configs['socketfile'], RequestHandlerClass)
 
-    def import_plugins(self,plugindir):
-        if os.path.exists(plugindir):
-            sys.path.insert(0, plugindir)
-            # get all py files and strip the extension
-            pyfiles = [x[:-3] for x in os.listdir(plugindir) if x.endswith('.py')]
-            # import the modules which we found in the plugin path
-            plugin_modules = {}
-            for module in pyfiles:
-                try:
-                    mod = __import__(module)
-                    if not hasattr(mod, 'setup'):
-                        self.logger.warn('plugin %r has no setup() function; '
-                                'won\'t load it' % extension)
-                    else:
-                        mod.setup()
-                        plugin_modules[module] = mod
-                except Exception as e:
-                    self.logger.error('skipping plugin "{0}": {1}'.format(module,e))
-
-            # remove added paths again
-            sys.path.remove(plugindir)
-            self.logger.info('loaded plugins from "{0}"'.format(plugindir))
-            return plugin_modules
-        else:
-            self.logger.warning('plugindir "{0}" doesn\'t exist'.format(plugindir))
-            return {}
 
 class SocketServerDaemon(Daemon):
 

@@ -8,6 +8,32 @@ import rstscript
 import platform
 
 
+def import_plugins(plugindir,logger):
+    if os.path.exists(plugindir):
+        sys.path.insert(0, plugindir)
+        # get all py files and strip the extension
+        pyfiles = [x[:-3] for x in os.listdir(plugindir) if x.endswith('.py')]
+        # import the modules which we found in the plugin path
+        plugin_modules = {}
+        for module in pyfiles:
+            try:
+                mod = __import__(module)
+                if not hasattr(mod, 'setup'):
+                    logger.warn('plugin %r has no setup() function; '
+                            'won\'t load it' % extension)
+                else:
+                    mod.setup()
+                    plugin_modules[module] = mod
+            except Exception as e:
+                logger.error('skipping plugin "{0}": {1}'.format(module,e))
+
+        # remove added paths again
+        sys.path.remove(plugindir)
+        logger.info('loaded "{1}" plugins from "{0}"'.format(plugindir,len(plugin_modules)))
+        return plugin_modules
+    else:
+        logger.warning('plugindir "{0}" doesn\'t exist'.format(plugindir))
+        return {}
 def make_color_handler(stream):
     import logging
     import colorama
@@ -207,6 +233,8 @@ def run_locally(options):
         else:
             logger.setLevel(getattr(logging,options['loglevel'].upper(),'WARNING'))
         logger.addHandler(handler)
+    # load plugins
+    plugins = import_plugins(options['plugindir'],logger)
     # do the work
     try:
         L = Litrunner(options,logger)
@@ -237,10 +265,14 @@ def client_main(argv=None):
     # parse default options
     if configs['options']:
         try:
-            configs['options'] = ujson.loads(configs['options'])
+            o = ujson.loads(configs['options'])
+            if type(o) == str:
+                raise ValueError
+            configs['options'] = o
         except ValueError:
             sys.stderr.write('couldn\'t parse default options '
             '"--defaults", please check again\n')
+            configs['options'] = {}
     # add the source directory to the config
     configs['rootdir'] = os.path.abspath('.')
     # make the file paths absolute
