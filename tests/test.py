@@ -7,7 +7,7 @@ import logging
 from io import StringIO
 
 # Path hack.
-sys.path.insert(0, os.path.abspath('..'))
+#sys.path.insert(0, os.path.abspath('..')) hopefully not needed
 from rstscript import litrunner
 from rstscript import processors
 from rstscript import main
