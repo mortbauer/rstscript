@@ -1,12 +1,16 @@
 import unittest
 import os
+import sys
 import logging
 import ast
 import logging
+from io import StringIO
+
+# Path hack.
+sys.path.insert(0, os.path.abspath('..'))
 from rstscript import litrunner
 from rstscript import processors
 from rstscript import main
-from io import StringIO
 
 def setup_base_litrunner():
     L = litrunner.Litrunner({},logging.getLogger('test'))
