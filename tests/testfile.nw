@@ -20,9 +20,9 @@ d = myfunc
 
 Hallo Martin 
 Hallo Susi
+
 %<{"proc":"python"}
-#from pylab import *
-#plot(1,2)
+plot(1,2)
 print('pfiate')
 print('pfiate')
 a='hhhhhhhhj'

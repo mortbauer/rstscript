@@ -65,7 +65,7 @@ class Litrunner(object):
     def set_defaults(self):
         try:
             if 'options' in self.options and self.options['options']:
-                return ujson.loads(self.options['options'])
+                return self.options['options']
             else:
                 return {}
         except Exception as e:

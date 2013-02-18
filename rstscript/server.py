@@ -63,15 +63,14 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
         for x in self.server.configs:
             options.setdefault(x,self.server.configs[x])
         # if debugging mode
-        stdout = None
+        stderr = None
         if not options['quiet']:
             # getlogger
             self.logger = logging.getLogger('rstscript.handler.{0}'.
                     format(threading.current_thread().name))
-            #self.logger.addHandler(logging.StreamHandler(open(options['stdout'],'w')))
             formatter = logging.Formatter('%(levelname)s %(name)s: %(message)s')
-            stdout = open('/proc/{0}/fd/2'.format(pid),'w')
-            handler = ColorizingStreamHandler(stdout)
+            stderr = open('/proc/{0}/fd/2'.format(pid),'w')
+            handler = ColorizingStreamHandler(stderr)
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
             if options['debug']:
@@ -105,8 +104,8 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
             self.logger.error('an unexpected error occured "{0}"'.format(e))
             raise e
         finally:
-            if stdout:
-                stdout.close()
+            if stderr:
+                stderr.close()
         # send some response
         self.request.send(ujson.dumps(options).encode('utf-8'))
         self.server.logger.info('served in "{0}" sec'.format(time.time()-t1))
