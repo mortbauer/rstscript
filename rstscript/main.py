@@ -34,53 +34,6 @@ def import_plugins(plugindir,logger):
     else:
         logger.warning('plugindir "{0}" doesn\'t exist'.format(plugindir))
         return {}
-def make_color_handler(stream):
-    import logging
-    import colorama
-    class ColorizingStreamHandler(logging.StreamHandler):
-        # Courtesy http://plumberjack.blogspot.com/2010/12/colorizing-logging-output-in-terminals.html
-        # Tweaked to use colorama for the coloring
-
-        """
-        Sets up a colorized logger, which is used ltscript
-        """
-        color_map = {
-            logging.INFO: colorama.Fore.WHITE,
-            logging.DEBUG: colorama.Style.DIM + colorama.Fore.CYAN,
-            logging.WARNING: colorama.Fore.YELLOW,
-            logging.ERROR: colorama.Fore.RED,
-            logging.CRITICAL: colorama.Back.RED,
-            logging.FATAL: colorama.Back.RED,
-        }
-
-        def __init__(self, stream, color_map=None):
-            logging.StreamHandler.__init__(self,
-                                        colorama.AnsiToWin32(stream).stream)
-            if color_map is not None:
-                self.color_map = color_map
-
-        @property
-        def is_tty(self):
-            isatty = getattr(self.stream, 'isatty', None)
-            return isatty and isatty()
-
-        def format(self, record):
-            message = logging.StreamHandler.format(self, record)
-            if self.is_tty:
-                # Don't colorize a traceback
-                parts = message.split('\n', 1)
-                parts[0] = self.colorize(parts[0], record)
-                message = '\n'.join(parts)
-            return message
-
-        def colorize(self, message, record):
-            try:
-                return (self.color_map[record.levelno] + message +
-                        colorama.Style.RESET_ALL)
-            except KeyError:
-                return message
-    return ColorizingStreamHandler(stream)
-
 
 def make_server_parser():
     default_configdir = os.path.join(os.getenv("XDG_CONFIG_HOME",''),"rstscript")
@@ -94,6 +47,8 @@ def make_server_parser():
     subparsers = parser.add_subparsers(dest='command')
     start = subparsers.add_parser('start',help='start the server')
     stop = subparsers.add_parser('stop',help='stop the server')
+    clean = subparsers.add_parser('clean',
+            help='clean up the pid file if something went wrong')
     restart = subparsers.add_parser('restart',help='restart the server')
 
     parser.add_argument("--nomatplotlib",action='store_true', dest="nomatplotlib",
@@ -214,17 +169,20 @@ def server_main(argv=None):
                 sys.exit(1)
         else:
             sys.stderr.write('the socketfile "{0}" exists already, if you are'
-                    'sure the server is down you can run "rstscriptd clean" to'
+                    'sure the server is down you can run "rstscriptd clean" to '
                     'remove it'.format(configs['socketfile']))
             sys.exit(1)
+    elif configs['command'] == 'clean':
+        sys.stderr.write('not implemented yet')
 
 def run_locally(options):
     import logging
+    from rstscript.daemonize import ColorizingStreamHandler
     from rstscript.litrunner import Litrunner
     if not options['quiet']:
         # getlogger
         logger = logging.getLogger('rstscript')
-        handler = make_color_handler(sys.stderr)
+        handler = ColorizingStreamHandler(sys.stderr)
         formatter = logging.Formatter('%(levelname)s %(name)s: %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
@@ -295,9 +253,9 @@ def client_main(argv=None):
             sys.exit(1)
         import socket
         import select
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            sock.connect(configs['socketfile'])
+            sock.connect((configs['host'],configs['port']))
         except:
             sys.stderr.write('it seems like the server is down')
             sys.exit(1)

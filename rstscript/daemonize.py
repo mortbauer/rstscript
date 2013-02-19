@@ -13,6 +13,32 @@ import socketserver
 
 from rstscript import main
 
+def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
+        logmaxmb=0,logbackups=1):
+    logger = logging.getLogger(logname)
+    # setup the app logger
+    handlers = []
+    if not logmaxmb:
+        handlers.append(logging.FileHandler(logfile))
+    else:
+        from logging.handlers import RotatingFileHandler
+        handlers.append(RotatingFileHandler(logfile,
+            maxBytes=logmaxmb * 1024 * 1024, backupCount=logbackups))
+    formatter = logging.Formatter(
+            '%(levelname)s %(asctime)s %(name)s: %(message)s')
+    for handler in handlers:
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    if debug:
+        logger.setLevel('DEBUG')
+    else:
+        if hasattr(logging,loglevel):
+            logger.setLevel(getattr(logging,loglevel.upper()))
+        else:
+            logger.setLevel('WARNING')
+            logger.error('invalid logging level "{0}"'.format(loglevel))
+    return logger
+
 def info(type, value, tb):
     # http://stackoverflow.com/a/242531/1607448
     if hasattr(sys, 'ps1') or not sys.stderr.isatty():
@@ -162,42 +188,24 @@ class Daemon(object,metaclass=abc.ABCMeta):
 
         It will be called after the process has been daemonized by
         start() or restart()."""
-
-def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
-        logmaxmb=0,logbackups=1):
-    logger = logging.getLogger(logname)
-    # setup the app logger
-    handlers = []
-    if not logmaxmb:
-        handlers.append(logging.FileHandler(logfile))
-    else:
-        from logging.handlers import RotatingFileHandler
-        handlers.append(RotatingFileHandler(logfile,
-            maxBytes=logmaxmb * 1024 * 1024, backupCount=logbackups))
-    formatter = logging.Formatter(
-            '%(levelname)s %(asctime)s %(name)s: %(message)s')
-    for handler in handlers:
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    if debug:
-        logger.setLevel('DEBUG')
-    else:
-        if hasattr(logging,loglevel):
-            logger.setLevel(getattr(logging,loglevel.upper()))
-        else:
-            logger.setLevel('WARNING')
-            logger.error('invalid logging level "{0}"'.format(loglevel))
-    return logger
-
-class RstscriptServer(socketserver.ThreadingMixIn,socketserver.UnixStreamServer):
+class RstscriptServer(socketserver.ThreadingMixIn,socketserver.TCPServer):
     def __init__(self, configs, RequestHandlerClass, logger):
         self.logger = logger
-        self.plugins = main.import_plugins(configs['plugindir'],self.logger)
+        self.plugins = main.import_plugins(
+                configs['plugindir'],self.logger)
         self.projects = {}
         self.configs = configs
-        socketserver.UnixStreamServer.__init__(self, configs['socketfile'], RequestHandlerClass)
-
-
+        socketserver.TCPServer.__init__(self,
+                (configs['host'],configs['port']),
+                RequestHandlerClass)
+        # import maplotlib if not disabled, because backend must be choosen
+        # before pyplot get's imported
+        if not self.configs['nomatplotlib']:
+            try:
+                import matplotlib
+                matplotlib.use('Agg')
+            except:
+                self.logger.error('couldn\'t import matplotlib')
 class SocketServerDaemon(Daemon):
 
     def __init__(self,configs,handler):
@@ -235,14 +243,8 @@ class SocketServerDaemon(Daemon):
             pass
 
     def run(self):
+        # hook up to remove the socket if the server ends regulary, won't
+        # happen if you just kill the process
         atexit.register(self._del,self.sockfile)
-        # import maplotlib if not disabled, because backend must be choosen
-        # before pyplot get's imported
-        if not self.configs['nomatplotlib']:
-            try:
-                import matplotlib
-                matplotlib.use('Agg')
-            except:
-                self.logger.error('couldn\'t import matplotlib')
         self.server = RstscriptServer(self.configs,self.handler,self.logger)
         self.server.serve_forever()

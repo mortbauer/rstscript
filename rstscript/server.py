@@ -76,7 +76,8 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
             if options['debug']:
                 self.logger.setLevel('DEBUG')
             else:
-                self.logger.setLevel(getattr(logging,options['loglevel'].upper(),'WARNING'))
+                self.logger.setLevel(
+                        getattr(logging,options['loglevel'].upper(),'WARNING'))
             # add also the server handlers, so logging to the central log file
             # happens as well
             for handler in self.server.logger.handlers:
@@ -84,20 +85,23 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
         else:
             # log to central log file
             self.logger = self.server.logger
-        self.logger.info('current running threads "{0}"'.format(len(threading.enumerate())))
+        self.logger.info('current running threads "{0}"'.
+                format(len(threading.enumerate())))
         # test if project is new
         project_id = (options['input'],options['woutput'],options['toutput'])
         # do the work
         try:
             if project_id in self.server.projects:
                 if self.server.projects[project_id].options != options:
-                    self.server.projects[project_id] = Litrunner(options,self.logger)
+                    self.server.projects[project_id] = Litrunner(options,
+                            self.logger)
                 else:
                     # the logger needs to be renewed, has info from old thread
                     # and so on
                     self.server.projects[project_id].logger = self.logger
             else:
-                self.server.projects[project_id] = Litrunner(options,self.logger)
+                self.server.projects[project_id] = Litrunner(options,
+                        self.logger)
             # now run the project
             self.server.projects[project_id].run()
         except Exception as e:
