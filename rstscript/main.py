@@ -89,6 +89,8 @@ def make_client_parser():
             default=os.path.join(default_configdir,'plugins'),
             help='specify the plugin directory')
 
+    parser.add_argument("-r", "--rebuild", action="store_true", default=False,
+            help="force a rebuild of the project although it might be already stored")
     parser.add_argument("-d", "--debug", action="store_true", default=False,
             help="run in debugging mode, equivalent to -l debug")
     parser.add_argument('-q','--quiet',dest='quiet',action='store_true', default=False,

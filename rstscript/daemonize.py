@@ -218,23 +218,12 @@ class SocketServerDaemon(Daemon):
         self.configs = configs
 
     def start(self):
-        # Check for a sockfile to see if the daemon already runs
-        if os.path.exists(self.sockfile):
-            msg = "sockfile {0} already exist".format(self.sockfile)
-            raise DaemonizeAlreadyStartedError(msg)
-        else:
-            if super().start():
-                self.logger.info('listening on "{0}"'.format(self.sockfile))
+        if super().start():
+            self.logger.info('listening on "{0}"'.format(self.sockfile))
 
     def stop(self):
-        # Check for a sockfile to see if the daemon already runs
-        if not os.path.exists(self.sockfile):
-            msg = "sockfile {0} doesn\'t exist".format(self.sockfile)
-            raise DaemonizeNotRunningError(msg)
-        else:
-            # register cleanup on exit
-            if super().stop():
-                os.remove(self.sockfile)
+        if super().stop():
+            pass
 
     def _del(self,path):
         try:

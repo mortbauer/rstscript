@@ -92,7 +92,7 @@ class NoneProcessore(BaseProcessor):
 
 class PythonProcessor(BaseProcessor):
     name = 'python'
-    defaults = {'a':False,'autofigure':False}
+    defaults = {'autofigure':False}
 
     def __init__(self,appoptions):
         self.init = True
@@ -205,7 +205,7 @@ class NoneFormatter(BaseFormatter):
 class CompactFormatter(BaseFormatter):
     name = 'compact'
     defaults = {'a':False,'e':True,'s':False,'l':False,
-            'autofigure':False,'label':'','desc':''}
+            'label':'','desc':''}
 
     def _decide(self,hunk,options):
         # needs to stay on top to silence output

@@ -91,7 +91,7 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
         project_id = (options['input'],options['woutput'],options['toutput'])
         # do the work
         try:
-            if project_id in self.server.projects:
+            if project_id in self.server.projects and not options['rebuild']:
                 if self.server.projects[project_id].options != options:
                     self.server.projects[project_id] = Litrunner(options,
                             self.logger)
@@ -100,6 +100,7 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
                     # and so on
                     self.server.projects[project_id].logger = self.logger
             else:
+                # completely new
                 self.server.projects[project_id] = Litrunner(options,
                         self.logger)
             # now run the project
