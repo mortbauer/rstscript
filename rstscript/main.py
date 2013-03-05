@@ -210,6 +210,7 @@ def client_main(argv=None):
     configs = yaml.load(pkgutil.get_data(__name__,'defaults/config.yml').decode('utf-8'))
     if not argv:
         argv = sys.argv[1:]
+    print(argv)
     # parse the arguments
     pre_parser, parser = make_client_parser()
     options, remaining_argv = pre_parser.parse_known_args(argv)

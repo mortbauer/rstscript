@@ -1,3 +1,4 @@
+import ipdb
 import os
 import io
 import sys
@@ -165,6 +166,7 @@ class PythonProcessor(BaseProcessor):
                 name = '{0}.png'.format(label)
                 figpath =os.path.join(self.get_figdir(),name)
                 fig.savefig(figpath)
+                logger.info('saved figure "{0}" to "{1}"'.format(label,figpath))
                 yield hunks.Figure(figpath,label=label,
                         desc=options.get('desc',''),
                         width=options.get('width','100%'),
@@ -174,6 +176,7 @@ class PythonProcessor(BaseProcessor):
     def process(self,chunk):
         tree = ast.parse(chunk.raw)
         lhunks = []
+        print(chunk.options)
         for codechunk in self.visitor.visit(tree,chunk.lineNumber):
             for hunk in self.execute(codechunk):
                 # test if hunk is empty or not, only append not empty
@@ -181,6 +184,7 @@ class PythonProcessor(BaseProcessor):
                     lhunks.append(hunk)
         # autosave figures TODO
         if chunk.options.get('autofigure',False):
+            #ipdb.set_trace()
             try:
                 for fig in self._saveallfigures(chunk.options,chunk.number):
                     lhunks.append(fig)

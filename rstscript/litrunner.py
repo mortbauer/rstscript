@@ -165,7 +165,8 @@ class Litrunner(object):
                     # skip options
                     if chunktype == 'code':
                         content.readline()
-                    self.toutput.write(content.read())
+                        self.toutput.write(content.read())
+                content.seek(0)
                 self.logger.info('chunk "{0}" is unchanged'.format(number))
 
         def getoptions(line,linenumber):
@@ -203,7 +204,6 @@ class Litrunner(object):
             # remove the comment
             elif line_start == comment:
                 content.write(line[token_length:])
-                print(line[token_length:])
             else:
                 content.write(line)
 
