@@ -1,4 +1,3 @@
-import ipdb
 import os
 import io
 import sys
@@ -6,14 +5,12 @@ import ast
 import abc
 import meta
 import traceback
-import logging
 import collections
 
 import rstscript
 from . import hunks
 
 CChunk = collections.namedtuple('CChunk',['chunk','hunks'])
-logger = logging.getLogger('rstscript.process')
 
 class PluginBase(metaclass=abc.ABCMeta):
     @property
@@ -31,8 +28,8 @@ class PluginBase(metaclass=abc.ABCMeta):
         else:
             if not hasattr(self.plugins,self.name):
                 self.plugins[self.name] = self
-                logger.info('registered {0} "{1}" from module "{2}"'.
-                        format(self.plugtype,self.name,self.__module__))
+                #self.logger.info('registered {0} "{1}" from module "{2}"'.
+                        #format(self.plugtype,self.name,self.__module__))
             else:
                 raise rstscript.RstscriptException('{0} "{1}" module file "{2}" is '
                 'already registered,no effect'.
@@ -84,6 +81,10 @@ class BaseProcessor(PluginBase):
     plugtype = 'processor'
     plugins = {}
 
+    def __init__(self,appoptions,logger):
+        self.options = appoptions
+        self.logger = logger
+
 
 class NoneProcessore(BaseProcessor):
     name = 'none'
@@ -95,8 +96,8 @@ class PythonProcessor(BaseProcessor):
     name = 'python'
     defaults = {'autofigure':False}
 
-    def __init__(self,appoptions):
-        self.init = True
+    def __init__(self,appoptions,logger):
+        super().__init__(appoptions,logger)
         self.globallocal = {}
         self.stderr = io.StringIO()
         self.stdout = io.StringIO()
@@ -104,8 +105,8 @@ class PythonProcessor(BaseProcessor):
         self.stdout_sys = sys.stdout
         self.stderr_sys = sys.stderr
         self.visitor = LitVisitor()
-        self.options = appoptions
         self.plt = False
+        self.init = True
 
     def get_figdir(self):
         """ to easily create the figdir on the fly if needed"""
@@ -129,7 +130,7 @@ class PythonProcessor(BaseProcessor):
             en = tr.find('File "<rstscript.dynamic>"')
             self.traceback.write(tr[:st])
             self.traceback.write(tr[en:])
-            logger.warning('failed on line {0} with {1}'.
+            self.logger.warning('failed on line {0} with {1}'.
                     format(codechunk.codeobject.co_firstlineno,tr[tr.rfind('\n')+1:]))
         finally:
             sys.stdout = self.stdout_sys
@@ -159,14 +160,14 @@ class PythonProcessor(BaseProcessor):
                 raise rstscript.RstscriptException('you need matplotlib for using autofigure')
         for num in self.plt.get_fignums():
             if num > 1:
-                logger.error('there are several figures in this chunks, not supported so far')
+                self.logger.error('there are several figures in this chunks, not supported so far')
             else:
                 label = options.get('label',number)
                 fig = self.plt.figure(num)
                 name = '{0}.png'.format(label)
                 figpath =os.path.join(self.get_figdir(),name)
                 fig.savefig(figpath)
-                logger.info('saved figure "{0}" to "{1}"'.format(label,figpath))
+                self.logger.info('saved figure "{0}" to "{1}"'.format(label,figpath))
                 yield hunks.Figure(figpath,label=label,
                         desc=options.get('desc',''),
                         width=options.get('width','100%'),
@@ -176,7 +177,6 @@ class PythonProcessor(BaseProcessor):
     def process(self,chunk):
         tree = ast.parse(chunk.raw)
         lhunks = []
-        print(chunk.options)
         for codechunk in self.visitor.visit(tree,chunk.lineNumber):
             for hunk in self.execute(codechunk):
                 # test if hunk is empty or not, only append not empty
@@ -184,19 +184,22 @@ class PythonProcessor(BaseProcessor):
                     lhunks.append(hunk)
         # autosave figures TODO
         if chunk.options.get('autofigure',False):
-            #ipdb.set_trace()
             try:
                 for fig in self._saveallfigures(chunk.options,chunk.number):
                     lhunks.append(fig)
                 self.plt.close('all')
             except Exception as e:
-                logger.error('couldn\'t save figure, Exception {0}'.format(e))
+                self.logger.error('couldn\'t save figure, Exception {0}'.format(e))
 
         yield CChunk(chunk,lhunks)
 
 class BaseFormatter(PluginBase):
     plugtype = 'formatter'
     plugins = {}
+
+    def __init__(self,appoptions,logger):
+        self.options = appoptions
+        self.logger = logger
 
 
 class NoneFormatter(BaseFormatter):

@@ -1,7 +1,10 @@
+import ipdb
 import os
 import sys
 import yaml
 import ujson
+import socket
+import select
 import pkgutil
 import argparse
 import rstscript
@@ -157,25 +160,26 @@ def server_main(argv=None):
             raise
             sys.exit(1)
     elif configs['command'] == 'stop':
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            daemon.stop()
-        except daemonize.DaemonizeNotRunningError as e:
-            sys.stderr.write(str(e))
+            sock.connect((configs['host'],configs['port']))
+        except:
+            print('it seems like the server is down',file=sys.stderr)
             sys.exit(1)
+        message = ujson.dumps(['stop'])
+        try:
+            len_sent = sock.send(message.encode('utf-8'))
+        except Exception as e:
+            raise e
+
     elif configs['command'] == 'start':
-        if not os.path.exists(configs['socketfile']):
-            try:
-                daemon.start()
-            except daemonize.DaemonizeAlreadyStartedError as e:
-                sys.stderr.write(str(e))
-                sys.exit(1)
-        else:
-            sys.stderr.write('the socketfile "{0}" exists already, if you are'
-                    'sure the server is down you can run "rstscriptd clean" to '
-                    'remove it'.format(configs['socketfile']))
+        try:
+            daemon.start()
+        except daemonize.DaemonizeAlreadyStartedError as e:
+            print(str(e),file=sys.stderr)
             sys.exit(1)
     elif configs['command'] == 'clean':
-        sys.stderr.write('not implemented yet')
+        print('not implemented yet',file=sys.stderr)
 
 def run_locally(options):
     import logging
@@ -210,7 +214,6 @@ def client_main(argv=None):
     configs = yaml.load(pkgutil.get_data(__name__,'defaults/config.yml').decode('utf-8'))
     if not argv:
         argv = sys.argv[1:]
-    print(argv)
     # parse the arguments
     pre_parser, parser = make_client_parser()
     options, remaining_argv = pre_parser.parse_known_args(argv)
@@ -231,8 +234,8 @@ def client_main(argv=None):
                 raise ValueError
             configs['options'] = o
         except ValueError:
-            sys.stderr.write('couldn\'t parse default options '
-            '"--defaults", please check again\n')
+            print('couldn\'t parse default options '
+            '"--defaults", please check again\n',file=sys.stderr)
             configs['options'] = {}
     # add the source directory to the config
     configs['rootdir'] = os.path.abspath('.')
@@ -240,6 +243,10 @@ def client_main(argv=None):
     for x in ('input','woutput','toutput'):
         if configs[x] and not os.path.isabs(configs[x]) :
             configs[x] = os.path.join(configs['rootdir'],configs[x])
+    # make the figdir absolute to the weaveing output if not already absolute
+    if not os.path.isabs(configs['figdir']):
+        configs['figdir'] = os.path.join(os.path.split(
+            configs['woutput'])[0],configs['figdir'])
     # if no input or output provided use stdin and stdout
     if not configs['input']:
         if os.isatty(0) or platform.system() == 'Windows': # i think there are no pipes in windows
@@ -251,22 +258,20 @@ def client_main(argv=None):
 
     if not configs['nodaemon']: # Connect to the server
         if platform.system() == 'Windows':
-            sys.stderr.write('you can\'t run rstscript as a daemon'
-            'on windows, use the "--no-daemon" option\n')
+            print('you can\'t run rstscript as a daemon'
+            'on windows, use the "--no-daemon" option\n',file=sys.stderr)
             sys.exit(1)
-        import socket
-        import select
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             sock.connect((configs['host'],configs['port']))
         except:
-            sys.stderr.write('it seems like the server is down')
+            print('it seems like the server is down',file=sys.stderr)
             sys.exit(1)
 
         sock.setblocking(0)
 
         # Send the data
-        message = ujson.dumps([os.getpid(),configs])
+        message = ujson.dumps(['run',os.getpid(),configs])
         #print('\nSending : "%s"' % message)
         len_sent = sock.send(message.encode('utf-8'))
 
@@ -278,7 +283,7 @@ def client_main(argv=None):
             # Clean up
         sock.close()
     else: # process locally
-        sys.stderr.write('without a daemon, no caching will happen\n')
+        print('without a daemon, no caching will happen\n',file=sys.stderr)
         run_locally(configs)
 
 

@@ -27,6 +27,7 @@ class Litrunner(object):
     def __init__(self,app_options,logger) :
         self.processorClasses = {}
         self.processors = {}
+        self.formatterClasses = {}
         self.formatters = {}
         self.options = app_options
         self.logger = logger
@@ -88,15 +89,16 @@ class Litrunner(object):
 
     def register_formatter(self,FormatterClass):
         # maybe a bit unusual, but seems to work
-        if not FormatterClass.name in self.formatters:
-            self.formatters[FormatterClass.name] = FormatterClass()
+        if not FormatterClass.name in self.formatterClasses:
+            self.formatterClasses[FormatterClass.name] = FormatterClass
         else:
             self.logger.error('formatter "{0}" already known'.format(FormatterClass.name))
 
     def get_processor(self,name):
         if name in self.processorClasses:
             if not name in self.processors:
-                self.processors[name] = self.processorClasses[name](self.options)
+                self.processors[name] = self.processorClasses[name](
+                        self.options,self.logger)
                 self.logger.info('instantiated processor "{0}"'.format(name))
             return self.processors[name].process
         else:
@@ -104,11 +106,15 @@ class Litrunner(object):
             'i will skip the chunk'.format(name))
 
     def get_formatter(self,name):
-        if name in self.formatters:
+        if name in self.formatterClasses:
+            if not name in self.formatters:
+                self.formatters[name] = self.formatterClasses[name](
+                        self.options,self.logger)
+                self.logger.info('instantiated formatter "{0}"'.format(name))
             return self.formatters[name].process
         else:
             self.logger.error('there is no formatter named "{0}",'
-            'i will try the default one, will skip the chunk'.format(name))
+            'i will skip the chunk'.format(name))
 
     def read(self,fileobject,start='%<',end='%>',comment='%%'):
         """This function returns a generator

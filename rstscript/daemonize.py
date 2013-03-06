@@ -130,8 +130,8 @@ class Daemon(object,metaclass=abc.ABCMeta):
             else:
                 sys.excepthook = info
                 self.run()
-            # only execute for parent
-            if os.getpid() == pid:
+            # only execute for parent if not in foreground
+            if os.getpid() == pid and not self.foreground:
                 # wait until pidfile is written, which means that the daemon is
                 # launched, or timeout reached, could be some race condition or
                 # so, since what happens if the daemon run ends before I got
@@ -195,9 +195,8 @@ class RstscriptServer(socketserver.ThreadingMixIn,socketserver.TCPServer):
                 configs['plugindir'],self.logger)
         self.projects = {}
         self.configs = configs
-        socketserver.TCPServer.__init__(self,
-                (configs['host'],configs['port']),
-                RequestHandlerClass)
+        socketserver.TCPServer.__init__(
+                self,(self.configs['host'],self.configs['port']),RequestHandlerClass)
         # import maplotlib if not disabled, because backend must be choosen
         # before pyplot get's imported
         if not self.configs['nomatplotlib']:
@@ -211,29 +210,25 @@ class SocketServerDaemon(Daemon):
     def __init__(self,configs,handler):
         self.logger = make_logger('rstscript.server',configs['logfile'],
             loglevel=configs['loglevel'],debug=configs['debug'])
-        self.sockfile = configs['socketfile']
         self.pidfile = configs['pidfile']
         self.handler = handler
         self.foreground = configs['foreground']
+        self.host = configs['host']
+        self.port = configs['port']
         self.configs = configs
 
     def start(self):
         if super().start():
-            self.logger.info('listening on "{0}"'.format(self.sockfile))
+            self.logger.info('listening on port "{1}" of host "{0}"'.
+                    format(self.host,self.port))
+        else:
+            self.logger.error('i couldn\'t start the socketserver daemon')
 
     def stop(self):
-        if super().stop():
-            pass
-
-    def _del(self,path):
-        try:
-            os.remove(path)
-        except:
-            pass
+        self.server.shutdown()
 
     def run(self):
         # hook up to remove the socket if the server ends regulary, won't
         # happen if you just kill the process
-        atexit.register(self._del,self.sockfile)
         self.server = RstscriptServer(self.configs,self.handler,self.logger)
         self.server.serve_forever()
