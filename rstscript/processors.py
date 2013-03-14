@@ -9,6 +9,7 @@ import collections
 
 import rstscript
 from . import hunks
+from .interactive import IPythonConnection
 
 CChunk = collections.namedtuple('CChunk',['chunk','hunks'])
 
@@ -107,6 +108,18 @@ class PythonProcessor(BaseProcessor):
         self.visitor = LitVisitor()
         self.plt = False
         self.init = True
+        if appoptions['ipython_connection']:
+            try:
+                self.ipc = IPythonConnection(appoptions['ipython_connection'])
+                self.logger.info('also executing to ipython kernel "{0}"'
+                        .format(os.path.split(self.ipc.cf)[1]))
+            except:
+                self.logger.exception('failed to connect to ipython kernel '
+                '"{0}"'.format(appoptions['ipython_connection']))
+                self.ipc = None
+
+        else:
+            self.ipc = None
 
     def get_figdir(self):
         """ to easily create the figdir on the fly if needed"""
@@ -122,6 +135,13 @@ class PythonProcessor(BaseProcessor):
         self.traceback.seek(0)
         try:
             exec(codechunk.codeobject,self.globallocal,self.globallocal)
+            if self.ipc:
+                try:
+                    self.ipc.run_cell(codechunk.source)
+                except:
+                    self.logger.exception('failed to execute "{0}" on ipython'
+                    ' kernel "{1}"'.format(
+                        codechunk.source,os.path.split(self.ipc.cf)[0]))
         except:
             tr = traceback.format_exc().strip()
             # remove all line until a line containing rstscript.dynamic except

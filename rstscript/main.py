@@ -1,4 +1,3 @@
-import ipdb
 import os
 import sys
 import yaml
@@ -92,6 +91,9 @@ def make_client_parser():
             default=os.path.join(default_configdir,'plugins'),
             help='specify the plugin directory')
 
+    parser.add_argument("--ipython-connection",default=None, nargs='?',
+            help="connect to running ipython kernel")
+
     parser.add_argument("-r", "--rebuild", action="store_true", default=False,
             help="force a rebuild of the project although it might be already stored")
     parser.add_argument("-d", "--debug", action="store_true", default=False,
@@ -151,33 +153,38 @@ def server_main(argv=None):
     configs.update(vars(parser.parse_args(remaining_argv)))
     # lazy create a daemonizedserver object
     daemon = daemonize.SocketServerDaemon(configs,server.RstscriptHandler)
-    # start/stop the server
-    if configs['command'] == 'restart':
-        try:
-            daemon.stop()
-            daemon.start()
-        except:
-            raise
-            sys.exit(1)
-    elif configs['command'] == 'stop':
+
+    def sendtoserver(rawmessage):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             sock.connect((configs['host'],configs['port']))
         except:
             print('it seems like the server is down',file=sys.stderr)
             sys.exit(1)
-        message = ujson.dumps(['stop'])
+        message = ujson.dumps([rawmessage])
         try:
             len_sent = sock.send(message.encode('utf-8'))
         except Exception as e:
             raise e
 
-    elif configs['command'] == 'start':
+    def startserver():
         try:
             daemon.start()
         except daemonize.DaemonizeAlreadyStartedError as e:
             print(str(e),file=sys.stderr)
             sys.exit(1)
+
+    # start/stop the server
+    if configs['command'] == 'restart':
+        sendtoserver('stop')
+        startserver()
+
+    elif configs['command'] == 'stop':
+        sendtoserver('stop')
+
+    elif configs['command'] == 'start':
+        startserver()
+
     elif configs['command'] == 'clean':
         print('not implemented yet',file=sys.stderr)
 
