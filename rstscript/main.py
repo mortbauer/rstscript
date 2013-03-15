@@ -9,6 +9,7 @@ import argparse
 import rstscript
 import platform
 
+from .server import ColorizingStreamHandler
 
 def import_plugins(plugindir,logger):
     if os.path.exists(plugindir):
@@ -44,14 +45,7 @@ def make_server_parser():
             default=os.path.join(default_configdir,'config.json'),
             help="specify config file")
 
-    parser = argparse.ArgumentParser(parents=[pre_parser])
-
-    subparsers = parser.add_subparsers(dest='command')
-    start = subparsers.add_parser('start',help='start the server')
-    stop = subparsers.add_parser('stop',help='stop the server')
-    clean = subparsers.add_parser('clean',
-            help='clean up the pid file if something went wrong')
-    restart = subparsers.add_parser('restart',help='restart the server')
+    parser = argparse.ArgumentParser(parents=[pre_parser],add_help=False)
 
     parser.add_argument("--nomatplotlib",action='store_true', dest="nomatplotlib",
             help="disable the import of matplotlib, can cause problems if plot nevertheless then")
@@ -64,6 +58,11 @@ def make_server_parser():
     parser.add_argument('-l','--loglevel',dest='loglevel', default='WARNING',
             help='specify the logging level')
     parser.add_argument('--version', action='version', version=rstscript.__version__)
+
+    subparsers = parser.add_subparsers(dest='command')
+    start = subparsers.add_parser('start',help='start the server')
+    stop = subparsers.add_parser('stop',help='stop the server')
+    restart = subparsers.add_parser('restart',help='restart the server')
 
     return pre_parser,parser
 
@@ -153,7 +152,6 @@ def server_main(argv=None):
     configs.update(vars(parser.parse_args(remaining_argv)))
     # lazy create a daemonizedserver object
     daemon = daemonize.SocketServerDaemon(configs,server.RstscriptHandler)
-
     def sendtoserver(rawmessage):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -184,9 +182,6 @@ def server_main(argv=None):
 
     elif configs['command'] == 'start':
         startserver()
-
-    elif configs['command'] == 'clean':
-        print('not implemented yet',file=sys.stderr)
 
 def run_locally(options):
     import logging

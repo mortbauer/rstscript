@@ -3,4 +3,4 @@ host: "localhost"
 port: 10000
 pidfile: "/tmp/rstscript.pid"
 logfile: "/tmp/rstscript.log"
-plugindir: "plugins"
+plugindir: "$HOME/.config/rstscript/plugins"

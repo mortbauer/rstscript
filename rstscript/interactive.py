@@ -41,7 +41,7 @@ class IPythonConnection(object):
         self.km = BlockingKernelManager(connection_file=self.cf)
         self.km.load_connection_file()
         self.km.start_channels()
-        self.shell = self.km.shell_channel
 
     def run_cell(self,code):
+        self.shell = self.km.shell_channel
         self.shell.execute(code)

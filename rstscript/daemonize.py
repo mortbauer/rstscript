@@ -9,7 +9,10 @@ import atexit
 import signal
 import socket
 import logging
+import threading
 import socketserver
+
+from .server import ColorizingStreamHandler
 
 from rstscript import main
 
@@ -62,10 +65,9 @@ class Daemon(object,metaclass=abc.ABCMeta):
 
     Usage: subclass the daemon class and override the run() method."""
 
-    def __init__(self, pidfile,logger=None,foreground=False):
+    def __init__(self, pidfile,logger=None):
         self.pidfile = pidfile
         self.logger = logger
-        self.debug = foreground
 
     def daemonize(self):
         try:
@@ -110,7 +112,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
             try:
                 self.run()
             except Exception as e:
-                self.logger.error(e)
+                self.logger.exception(e)
     def start(self):
         """Starts a daemonized process
 
@@ -128,8 +130,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
             if not self.foreground:
                 self.daemonize()
             else:
-                sys.excepthook = info
-                self.run()
+                pass
             # only execute for parent if not in foreground
             if os.getpid() == pid and not self.foreground:
                 # wait until pidfile is written, which means that the daemon is
@@ -188,6 +189,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
 
         It will be called after the process has been daemonized by
         start() or restart()."""
+
 class RstscriptServer(socketserver.ThreadingMixIn,socketserver.TCPServer):
     def __init__(self, configs, RequestHandlerClass, logger):
         self.logger = logger
@@ -205,6 +207,7 @@ class RstscriptServer(socketserver.ThreadingMixIn,socketserver.TCPServer):
                 matplotlib.use('Agg')
             except:
                 self.logger.error('couldn\'t import matplotlib')
+
 class SocketServerDaemon(Daemon):
 
     def __init__(self,configs,handler):
@@ -216,13 +219,29 @@ class SocketServerDaemon(Daemon):
         self.host = configs['host']
         self.port = configs['port']
         self.configs = configs
+        if self.foreground:
+            handler = ColorizingStreamHandler(sys.stderr)
+            self.logger.addHandler(handler)
 
     def start(self):
-        if super().start():
-            self.logger.info('listening on port "{1}" of host "{0}"'.
-                    format(self.host,self.port))
+        self.server = RstscriptServer(self.configs,self.handler,self.logger)
+        if self.foreground:
+            sys.excepthook = info
+            t = threading.Thread(target=self.run)
+            # catch incoming interupts and stop gracefully
+            signal.signal(signal.SIGINT, self.interupt)
+            t.start()
         else:
-            self.logger.error('i couldn\'t start the socketserver daemon')
+            if super().start():
+                self.logger.info('listening on port "{1}" of host "{0}"'.
+                        format(self.host,self.port))
+            else:
+                self.logger.error('i couldn\'t start the socketserver daemon')
+
+    def interupt(self,signum, frame):
+        self.logger.warn('catched interrupt "{0}", shutting down'
+                .format(signum))
+        self.stop()
 
     def stop(self):
         self.server.shutdown()
@@ -230,5 +249,4 @@ class SocketServerDaemon(Daemon):
     def run(self):
         # hook up to remove the socket if the server ends regulary, won't
         # happen if you just kill the process
-        self.server = RstscriptServer(self.configs,self.handler,self.logger)
         self.server.serve_forever()
