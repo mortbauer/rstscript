@@ -18,6 +18,76 @@ handler in a separate thread.
 
 """
 
+class ZmqBase(threading.Thread):
+    """
+    This is the base for all processes and offers utility functions
+    for setup and creating new streams.
+
+    """
+    def __init__(self,sock_type,host,port,bind=True):
+        super().__init__()
+        self.context = zmq.Context()
+        self.loop = ioloop.IOLoop.instance()
+        self.sock_type = sock_type
+        self.host = host
+        self.port = port
+        self.bind = bind
+
+    def setup(self):
+        """
+        Creates a :class:`~zmq.eventloop.zmqstream.ZMQStream`.
+
+        :param sock_type: The ØMQ socket type (e.g. ``zmq.REQ``)
+        :param addr: Address to bind or connect to formatted as *host:port*,
+                *(host, port)* or *host* (bind to random port).
+                If *bind* is ``True``, *host* may be:
+
+                - the wild-card ``*``, meaning all available interfaces,
+                - the primary IPv4 address assigned to the interface, in its
+                  numeric representation or
+                - the interface name as defined by the operating system.
+
+                If *bind* is ``False``, *host* may be:
+
+                - the DNS name of the peer or
+                - the IPv4 address of the peer, in its numeric representation.
+
+                If *addr* is just a host name without a port and *bind* is
+                ``True``, the socket will be bound to a random port.
+        :param bind: Binds to *addr* if ``True`` or tries to connect to it
+                otherwise.
+        :param callback: A callback for
+                :meth:`~zmq.eventloop.zmqstream.ZMQStream.on_recv`, optional
+        :param subscribe: Subscription pattern for *SUB* sockets, optional,
+                defaults to ``b''``.
+        :returns: A tuple containg the stream and the port number.
+
+        """
+        sock = self.context.socket(self.sock_type)
+
+
+        try:
+            # Bind/connect the socket
+            if self.bind:
+                if self.port:
+                    sock.bind('tcp://%s:%s' % (self.host, self.port))
+                else:
+                    self.port = sock.bind_to_random_port('tcp://%s' % self.host)
+            else:
+                sock.connect('tcp://%s:%s' % (self.host, self.port))
+        except Exception as e:
+            logging.error('couldn\'t {2} to port {0}: {1}'.
+                    format(self.port,e,'bind' if self.bind else 'connect'))
+            raise
+
+    def run(self):
+        self.setup()
+        self.loop.start()
+
+
+    def stop(self,sign=None,frame=None):
+        self.loop.stop()
+
 class ZmqProcess(threading.Thread):
     """
     This is the base for all processes and offers utility functions
@@ -28,7 +98,7 @@ class ZmqProcess(threading.Thread):
             Handler=None,args=(),kwargs={},subscribe=b''):
         super().__init__()
         self.context = zmq.Context()
-        self.loop = ioloop.IOLoop.instance()
+        self.loop = ioloop.IOLoop()
         self.sock_type = sock_type
         self.host = host
         self.port = port
@@ -103,6 +173,7 @@ class ZmqProcess(threading.Thread):
     def run(self):
         self.setup()
         self.stream()
+        logging.warn('listening on port {0} of host {1}'.format(self.port,self.host))
         self.loop.start()
 
 
@@ -148,9 +219,10 @@ class MessageHandler(object):
              'not allowed, private'.format(msg_type))
             stream.send_json(['error',{}])
         elif msg_type == 'stop':
+            stream.send_json(['alive',{}])
             self._stop()
-        elif msg_type == 'start':
-            stream.send_json(['done',{}])
+        elif msg_type == 'ping':
+            stream.send_json(['alive',{}])
         else:
             try:
                 target = getattr(self, msg_type)

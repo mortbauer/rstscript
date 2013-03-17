@@ -16,13 +16,17 @@ class DaemonizeAlreadyStartedError(Exception):
 class DaemonizeNotRunningError(Exception):
     pass
 
-class Daemon(object,metaclass=abc.ABCMeta):
+class Daemon(object):
     """A generic daemon class.
 
     Usage: subclass the daemon class and override the run() method."""
 
-    def __init__(self, pidfile):
+    def __init__(self, pidfile,target=None,args=(),kwargs={},foreground=False):
         self.pidfile = pidfile
+        self.target = target
+        self.args = args
+        self.kwargs = kwargs
+        self.foreground = foreground
 
     def daemonize(self):
         try:
@@ -81,7 +85,7 @@ class Daemon(object,metaclass=abc.ABCMeta):
             # Start the daemon
             pid = os.getpid()
             # catch incoming interupts and stop gracefully
-            signal.signal(signal.SIGINT, self.interupt)
+            #signal.signal(signal.SIGINT, self.interupt)
             if self.foreground:
                 sys.excepthook = utils.info
                 self.run()
@@ -92,42 +96,40 @@ class Daemon(object,metaclass=abc.ABCMeta):
                 sys.exit(0)
             return True
 
-    def interupt(self,signum, frame):
-        self.stop()
+    def kill(self):
+        """kill's the daemon."""
 
-    def stop(self):
-        """Stop the daemon."""
-
-        # Get the pid from the pidfile
-        try:
-            with open(self.pidfile,'r') as pf:
-                pid = int(pf.read().strip())
-        except IOError:
-            pid = None
-
-        if not pid:
-            msg = "pidfile {0} does not exist".format(self.pidfile)
-            # though we hadn't to do anything the daemon seems done so we can
-            # start a new one or whatever
-            raise DaemonizeNotRunningError(msg)
-        else:
-            # Try killing the daemon process
+        if not self.foreground:
             try:
-                for i in range(5):
-                    os.kill(pid, signal.SIGKILL)
-                    time.sleep(0.1)
-            except OSError as err:
-                if err.errno == os.errno.ESRCH:
-                    pid = open(self.pidfile).read().strip()
-                    os.remove(self.pidfile)
-                    return True
-                else:
-                    raise DaemonizeError('failed to stop the daemon: {0}'
-                            .format(err.args))
+            # Get the pid from the pidfile
+                with open(self.pidfile,'r') as pf:
+                    pid = int(pf.read().strip())
+            except IOError:
+                pid = None
 
-    @abc.abstractmethod
+            if not pid:
+                msg = "pidfile {0} does not exist".format(self.pidfile)
+                # though we hadn't to do anything the daemon seems done so we can
+                # start a new one or whatever
+                raise DaemonizeNotRunningError(msg)
+            else:
+                # Try killing the daemon process
+                try:
+                    for i in range(5):
+                        os.kill(pid, signal.SIGKILL)
+                        time.sleep(0.1)
+                except OSError as err:
+                    if err.errno == os.errno.ESRCH:
+                        pid = open(self.pidfile).read().strip()
+                        os.remove(self.pidfile)
+                        return True
+                    else:
+                        raise DaemonizeError('failed to stop the daemon: {0}'
+                                .format(err.args))
+
     def run(self):
         """You should override this method when you subclass Daemon.
 
         It will be called after the process has been daemonized by
         start() or restart()."""
+        self.target(*self.args, **self.kwargs)

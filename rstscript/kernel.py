@@ -47,30 +47,22 @@ class Handler(zmqserver.MessageHandler):
 
 class RSTDaemon(daemonize.Daemon):
 
-    def __init__(self,configs,loghandler):
-        self.logger = utils.make_logger('rstscript.server',configs['logfile'],
-            loglevel=configs['loglevel'],debug=configs['debug'])
+    def __init__(self,configs):
+        super().__init__(configs['pidfile'],
+                foreground=configs.get('foreground',False))
         self.pidfile = configs['pidfile']
-        self.loghandler = loghandler
-        self.foreground = configs['foreground']
         self.host = configs['host']
         self.port = configs['port']
         self.configs = configs
-        if self.foreground:
-            loghandler = logging.StreamHandler(sys.stdout)
-            self.logger.addHandler(loghandler)
 
     def start(self):
         self.server = zmqserver.ZmqProcess(zmq.REP,host=self.host,
                 port=self.port,bind=True,Handler=Handler)
-        if super().start():
-            self.logger.info('listening on port "{1}" of host "{0}"'.
-                    format(self.host,self.port))
-        else:
-            self.logger.error('i couldn\'t start the daemon')
+        signal.signal(signal.SIGINT,self.interupt)
+        super().start()
 
     def interupt(self,signum, frame):
-        self.logger.warn('catched interrupt "{0}", shutting down'
+        logging.warn('catched interrupt "{0}", shutting down'
                 .format(signum))
         self.stop()
 
@@ -83,4 +75,4 @@ class RSTDaemon(daemonize.Daemon):
         try:
             self.server.start()
         except:
-            self.logger.exception('the server was interuppted')
+            logging.exception('the server was interuppted')

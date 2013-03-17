@@ -10,6 +10,7 @@ import argparse
 import rstscript
 import platform
 
+import zmq
 from rstscript.utils import import_plugins
 from rstscript import kernel
 from rstscript import client
@@ -128,33 +129,44 @@ def server_main(argv=None):
     # parse main args
     configs.update(vars(parser.parse_args(remaining_argv)))
     # lazy create a daemonizedserver object
-    daemon = kernel.RSTDaemon(configs,server.RstscriptHandler)
+    daemon = kernel.RSTDaemon(configs)
     # create the client
     mclient = client.Client(configs['host'],configs['port'])
     mclient.connect()
+    inner = mclient.context.socket(zmq.PULL)
+    inner.bind('inproc://rstscript')
 
-    def startserver(mclient):
-        for x in range(5):
-            try:
-                daemon.start()
-                if mclient.start():
-                    return True
-            except daemonize.DaemonizeAlreadyStartedError as e:
-                time.sleep(1)
+    def startserver():
+        try:
+            daemon.start()
+            if mclient.ping():
+                return True
+        except daemonize.DaemonizeAlreadyStartedError as e:
+            raise
 
-    def stopserver(mclient):
+    def stopserver():
+        # innproc communication
         mclient.stop()
+        msg = inner.recv_json()
         return True
 
     if configs['command'] == 'stop':
-        stopserver(mclient)
+        stopserver()
     elif configs['command'] == 'start':
-        startserver(mclient)
+        startserver()
     elif configs['command'] == 'restart':
-        if stopserver(mclient):
-            time.sleep(1)
-            startserver(mclient)
+        if stopserver():
+            inner.close()
+            # ugly hack, but outherwise I don't know how to bring the
+            # socket into the send state again
+            del mclient,inner
+            mclient = client.Client(configs['host'],configs['port'])
+            mclient.connect()
+            inner = mclient.context.socket(zmq.PULL)
+            inner.bind('inproc://rstscript')
+            startserver()
 
+    inner.close()
     mclient.close()
 
 def run_locally(options):
