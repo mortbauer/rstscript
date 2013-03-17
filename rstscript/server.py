@@ -56,7 +56,6 @@ class RstscriptHandler(socketserver.BaseRequestHandler):
 
     def handle(self):
         t1 = time.time()
-        time.sleep(10)
         # get the options
         data = self.request.recv(1024)
         data = ujson.loads(data)

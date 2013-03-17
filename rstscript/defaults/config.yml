@@ -1,6 +1,6 @@
 socketfile: "/tmp/rstscript.sock"
-host: "localhost"
-port: 10000
+host: "127.0.0.1"
+port: "5679"
 pidfile: "/tmp/rstscript.pid"
 logfile: "/tmp/rstscript.log"
 plugindir: "$HOME/.config/rstscript/plugins"

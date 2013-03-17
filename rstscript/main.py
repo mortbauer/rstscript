@@ -1,6 +1,7 @@
 import os
 import sys
 import yaml
+import time
 import ujson
 import socket
 import select
@@ -9,34 +10,10 @@ import argparse
 import rstscript
 import platform
 
+from rstscript.utils import import_plugins
+from rstscript import kernel
+from rstscript import client
 from .server import ColorizingStreamHandler
-
-def import_plugins(plugindir,logger):
-    if os.path.exists(plugindir):
-        sys.path.insert(0, plugindir)
-        # get all py files and strip the extension
-        pyfiles = [x[:-3] for x in os.listdir(plugindir) if x.endswith('.py')]
-        # import the modules which we found in the plugin path
-        plugin_modules = {}
-        for module in pyfiles:
-            try:
-                mod = __import__(module)
-                if not hasattr(mod, 'setup'):
-                    logger.warn('plugin %r has no setup() function; '
-                            'won\'t load it' % extension)
-                else:
-                    mod.setup()
-                    plugin_modules[module] = mod
-            except Exception as e:
-                logger.error('skipping plugin "{0}": {1}'.format(module,e))
-
-        # remove added paths again
-        sys.path.remove(plugindir)
-        logger.info('loaded "{1}" plugins from "{0}"'.format(plugindir,len(plugin_modules)))
-        return plugin_modules
-    else:
-        logger.warning('plugindir "{0}" doesn\'t exist'.format(plugindir))
-        return {}
 
 def make_server_parser():
     default_configdir = os.path.join(os.getenv("XDG_CONFIG_HOME",''),"rstscript")
@@ -62,7 +39,7 @@ def make_server_parser():
     subparsers = parser.add_subparsers(dest='command')
     start = subparsers.add_parser('start',help='start the server')
     stop = subparsers.add_parser('stop',help='stop the server')
-    restart = subparsers.add_parser('restart',help='restart the server')
+    restart = subparsers.add_parser('restart',help='retstart the server')
 
     return pre_parser,parser
 
@@ -151,37 +128,34 @@ def server_main(argv=None):
     # parse main args
     configs.update(vars(parser.parse_args(remaining_argv)))
     # lazy create a daemonizedserver object
-    daemon = daemonize.SocketServerDaemon(configs,server.RstscriptHandler)
-    def sendtoserver(rawmessage):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.connect((configs['host'],configs['port']))
-        except:
-            print('it seems like the server is down',file=sys.stderr)
-            sys.exit(1)
-        message = ujson.dumps([rawmessage])
-        try:
-            len_sent = sock.send(message.encode('utf-8'))
-        except Exception as e:
-            raise e
+    daemon = kernel.RSTDaemon(configs,server.RstscriptHandler)
+    # create the client
+    mclient = client.Client(configs['host'],configs['port'])
+    mclient.connect()
 
-    def startserver():
-        try:
-            daemon.start()
-        except daemonize.DaemonizeAlreadyStartedError as e:
-            print(str(e),file=sys.stderr)
-            sys.exit(1)
+    def startserver(mclient):
+        for x in range(5):
+            try:
+                daemon.start()
+                if mclient.start():
+                    return True
+            except daemonize.DaemonizeAlreadyStartedError as e:
+                time.sleep(1)
 
-    # start/stop the server
-    if configs['command'] == 'restart':
-        sendtoserver('stop')
-        startserver()
+    def stopserver(mclient):
+        mclient.stop()
+        return True
 
-    elif configs['command'] == 'stop':
-        sendtoserver('stop')
-
+    if configs['command'] == 'stop':
+        stopserver(mclient)
     elif configs['command'] == 'start':
-        startserver()
+        startserver(mclient)
+    elif configs['command'] == 'restart':
+        if stopserver(mclient):
+            time.sleep(1)
+            startserver(mclient)
+
+    mclient.close()
 
 def run_locally(options):
     import logging
@@ -253,37 +227,25 @@ def client_main(argv=None):
     if not configs['input']:
         if os.isatty(0) or platform.system() == 'Windows': # i think there are no pipes in windows
             raise rstscript.RstscriptException('you need to specify a input filename with "-i"')
-        configs['input'] = '/proc/{0}/fd/0'.format(os.getpid())
-    if not configs['woutput']:
-        configs['woutput'] = '/proc/{0}/fd/1'.format(os.getpid())
-        configs['quiet'] = True # well we pipe already something here so logger shut up
+
+    if configs['debug']:
+        configs['loglevel'] = 'DEBUG'
 
     if not configs['nodaemon']: # Connect to the server
         if platform.system() == 'Windows':
             print('you can\'t run rstscript as a daemon'
             'on windows, use the "--no-daemon" option\n',file=sys.stderr)
             sys.exit(1)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.connect((configs['host'],configs['port']))
-        except:
-            print('it seems like the server is down',file=sys.stderr)
-            sys.exit(1)
 
-        sock.setblocking(0)
+        mclient = client.Client(configs['host'],configs['port'])
+        mclient.connect()
 
         # Send the data
-        message = ujson.dumps(['run',os.getpid(),configs])
-        #print('\nSending : "%s"' % message)
-        len_sent = sock.send(message.encode('utf-8'))
+        t1 = time.time()
+        mclient.run(configs)
+        print('elapsed time',time.time()-t1)
 
-        # Receive a response
-        ready = select.select([sock], [], [], 6)
-        if ready:
-            response = sock.recv(1024)
-            #print('\nReceived: "%s"' % response.decode('utf-8'))
-            # Clean up
-        sock.close()
+        mclient.close()
     else: # process locally
         print('without a daemon, no caching will happen\n',file=sys.stderr)
         run_locally(configs)

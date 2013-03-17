@@ -4,54 +4,10 @@ import os
 import sys
 import abc
 import time
-import copy
 import atexit
 import signal
-import socket
-import logging
-import threading
-import socketserver
 
-from .server import ColorizingStreamHandler
-
-from rstscript import main
-
-def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
-        logmaxmb=0,logbackups=1):
-    logger = logging.getLogger(logname)
-    # setup the app logger
-    handlers = []
-    if not logmaxmb:
-        handlers.append(logging.FileHandler(logfile))
-    else:
-        from logging.handlers import RotatingFileHandler
-        handlers.append(RotatingFileHandler(logfile,
-            maxBytes=logmaxmb * 1024 * 1024, backupCount=logbackups))
-    formatter = logging.Formatter(
-            '%(levelname)s %(asctime)s %(name)s: %(message)s')
-    for handler in handlers:
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    if debug:
-        logger.setLevel('DEBUG')
-    else:
-        if hasattr(logging,loglevel):
-            logger.setLevel(getattr(logging,loglevel.upper()))
-        else:
-            logger.setLevel('WARNING')
-            logger.error('invalid logging level "{0}"'.format(loglevel))
-    return logger
-
-def info(type, value, tb):
-    # http://stackoverflow.com/a/242531/1607448
-    if hasattr(sys, 'ps1') or not sys.stderr.isatty():
-    # we are in interactive mode or we don't have a tty-like
-    # device, so we call the default hook
-        sys.__excepthook__(type, value, tb)
-    else:
-        import traceback
-        # we are NOT in interactive mode, print the exception…
-        traceback.print_exception(type, value, tb)
+from rstscript import utils
 
 class DaemonizeError(Exception):
     pass
@@ -65,9 +21,8 @@ class Daemon(object,metaclass=abc.ABCMeta):
 
     Usage: subclass the daemon class and override the run() method."""
 
-    def __init__(self, pidfile,logger=None):
+    def __init__(self, pidfile):
         self.pidfile = pidfile
-        self.logger = logger
 
     def daemonize(self):
         try:
@@ -109,10 +64,8 @@ class Daemon(object,metaclass=abc.ABCMeta):
             # if daemon process end from alone we want the pid file removed
             # therefore let's register with atexit
             atexit.register(os.remove,self.pidfile)
-            try:
-                self.run()
-            except Exception as e:
-                self.logger.exception(e)
+            self.run()
+
     def start(self):
         """Starts a daemonized process
 
@@ -127,28 +80,20 @@ class Daemon(object,metaclass=abc.ABCMeta):
         else:
             # Start the daemon
             pid = os.getpid()
-            if not self.foreground:
+            # catch incoming interupts and stop gracefully
+            signal.signal(signal.SIGINT, self.interupt)
+            if self.foreground:
+                sys.excepthook = utils.info
+                self.run()
+            else:
                 self.daemonize()
-            else:
-                pass
-            # only execute for parent if not in foreground
-            if os.getpid() == pid and not self.foreground:
-                # wait until pidfile is written, which means that the daemon is
-                # launched, or timeout reached, could be some race condition or
-                # so, since what happens if the daemon run ends before I got
-                # it?
-                for i in range(5):
-                    try:
-                        child_pid = open(self.pidfile,'r').read().strip()
-                        if self.logger:
-                            self.logger.info('run succesfully daemonized, running on pid "{0}"'.
-                                    format(child_pid))
-                        return child_pid
-                    except OSError:
-                        time.sleep(0.01)
-                raise DaemonizeError('daemon couldn\'t be launched, timeout reached')
-            else:
-                sys.exit(0) # just exit for all childs if they ever will get that far
+            # just exit for all childs if they ever will get that far
+            if os.getpid() != pid:
+                sys.exit(0)
+            return True
+
+    def interupt(self,signum, frame):
+        self.stop()
 
     def stop(self):
         """Stop the daemon."""
@@ -169,15 +114,12 @@ class Daemon(object,metaclass=abc.ABCMeta):
             # Try killing the daemon process
             try:
                 for i in range(5):
-                    os.kill(pid, signal.SIGTERM)
+                    os.kill(pid, signal.SIGKILL)
                     time.sleep(0.1)
             except OSError as err:
                 if err.errno == os.errno.ESRCH:
                     pid = open(self.pidfile).read().strip()
                     os.remove(self.pidfile)
-                    if self.logger:
-                        self.logger.info('stopped the daemon "{0}" succesfully'
-                                .format(pid))
                     return True
                 else:
                     raise DaemonizeError('failed to stop the daemon: {0}'
@@ -189,64 +131,3 @@ class Daemon(object,metaclass=abc.ABCMeta):
 
         It will be called after the process has been daemonized by
         start() or restart()."""
-
-class RstscriptServer(socketserver.ThreadingMixIn,socketserver.TCPServer):
-    def __init__(self, configs, RequestHandlerClass, logger):
-        self.logger = logger
-        self.plugins = main.import_plugins(
-                configs['plugindir'],self.logger)
-        self.projects = {}
-        self.configs = configs
-        socketserver.TCPServer.__init__(
-                self,(self.configs['host'],self.configs['port']),RequestHandlerClass)
-        # import maplotlib if not disabled, because backend must be choosen
-        # before pyplot get's imported
-        if not self.configs['nomatplotlib']:
-            try:
-                import matplotlib
-                matplotlib.use('Agg')
-            except:
-                self.logger.error('couldn\'t import matplotlib')
-
-class SocketServerDaemon(Daemon):
-
-    def __init__(self,configs,handler):
-        self.logger = make_logger('rstscript.server',configs['logfile'],
-            loglevel=configs['loglevel'],debug=configs['debug'])
-        self.pidfile = configs['pidfile']
-        self.handler = handler
-        self.foreground = configs['foreground']
-        self.host = configs['host']
-        self.port = configs['port']
-        self.configs = configs
-        if self.foreground:
-            handler = ColorizingStreamHandler(sys.stderr)
-            self.logger.addHandler(handler)
-
-    def start(self):
-        self.server = RstscriptServer(self.configs,self.handler,self.logger)
-        if self.foreground:
-            sys.excepthook = info
-            t = threading.Thread(target=self.run)
-            # catch incoming interupts and stop gracefully
-            signal.signal(signal.SIGINT, self.interupt)
-            t.start()
-        else:
-            if super().start():
-                self.logger.info('listening on port "{1}" of host "{0}"'.
-                        format(self.host,self.port))
-            else:
-                self.logger.error('i couldn\'t start the socketserver daemon')
-
-    def interupt(self,signum, frame):
-        self.logger.warn('catched interrupt "{0}", shutting down'
-                .format(signum))
-        self.stop()
-
-    def stop(self):
-        self.server.shutdown()
-
-    def run(self):
-        # hook up to remove the socket if the server ends regulary, won't
-        # happen if you just kill the process
-        self.server.serve_forever()
