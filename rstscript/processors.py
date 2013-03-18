@@ -3,7 +3,7 @@ import io
 import sys
 import ast
 import abc
-import meta
+#import meta # not needed anymore
 import traceback
 import collections
 
@@ -40,6 +40,11 @@ class PluginBase(metaclass=abc.ABCMeta):
     def process(self):
         pass
 
+# idea, second visitor for all childs above the magic level
+# which just pulls in the source code
+
+
+
 class LitVisitor(ast.NodeTransformer):
     """ special ast visitor, parses code chunks from string into single code
     objects do not set maxdepth bigger than 1, except you know what you do, but
@@ -48,6 +53,12 @@ class LitVisitor(ast.NodeTransformer):
     def __init__(self,maxdepth=1):
         self.maxdepth = maxdepth
         self.CodeChunk = collections.namedtuple('CodeChunk',['codeobject','source','assign'])
+
+    def _get_last_lineno(self,node):
+        if hasattr(node,'body'):
+            return self._get_last_lineno(node.body[-1])
+        else:
+            return node.lineno
 
     def _autoprint(self,node):
         # implement autoprinting discovery
@@ -60,23 +71,25 @@ class LitVisitor(ast.NodeTransformer):
             if len(bmc)>0:
                 return node.targets[0].id
 
-    def _compile(self,node,start_lineno):
+    def _compile(self,node,start_lineno,raw):
+        # get source code of the node, must be before the next statement
+        source = '\n'.join(raw[node.lineno-1:self._get_last_lineno(node)])
         # fix linenumber, so it represents linenumber of original file
         node.lineno = node.lineno + start_lineno
         codeobject = compile(ast.Module([node]),"<rstscript.dynamic>",'exec')
-        source = meta.asttools.dump_python_source(node)
+        #source = meta.asttools.dump_python_source(node)
         auto = self._autoprint(node)
         return self.CodeChunk(codeobject,source,auto)
 
-    def visit(self, node, start_lineno, depth=0):
+    def visit(self, node, start_lineno,raw,depth=0):
         """Visit a node."""
 
         if depth >= self.maxdepth:
-            yield self._compile(node,start_lineno)
+            yield self._compile(node,start_lineno,raw)
         else:
             depth += 1
             for child in ast.iter_child_nodes(node):
-                yield from self.visit(child,start_lineno,depth=depth)
+                yield from self.visit(child,start_lineno,raw,depth=depth)
 
 class BaseProcessor(PluginBase):
     plugtype = 'processor'
@@ -197,7 +210,7 @@ class PythonProcessor(BaseProcessor):
     def process(self,chunk):
         tree = ast.parse(chunk.raw)
         lhunks = []
-        for codechunk in self.visitor.visit(tree,chunk.lineNumber):
+        for codechunk in self.visitor.visit(tree,chunk.lineNumber,chunk.raw.splitlines()):
             for hunk in self.execute(codechunk):
                 # test if hunk is empty or not, only append not empty
                 if hunk.simple:

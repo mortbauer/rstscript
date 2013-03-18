@@ -12,7 +12,10 @@ print('pfiate')
 a='hhhhhhhh'
 def myfunc():
     """ This is my cool test function and I'm so coool """
-    return 5*5
+    def myhelper(c):
+        return c
+
+    return 5*5*myhelper(9)
 b = 2*4
 c = myfunc()
 d = myfunc
