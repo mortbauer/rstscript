@@ -8,42 +8,18 @@ import threading
 
 from rstscript import zmqserver
 from rstscript import daemonize
-from rstscript import utils
 from rstscript import litrunner
 
-class Handler(zmqserver.MessageHandler):
+
+class ZmqHandler(zmqserver.MessageHandler,litrunner.LitServer):
 
     def __init__(self,*args,**kwargs):
-        super().__init__(**kwargs)
+        super(ZmqHandler,self).__init__(**kwargs)
         self.projects = {}
 
     def run(self,socket,data,logger):
-        # test if project is new
-        try:
-            project_id = (data['input'],data['woutput'],data['toutput'])
-        except KeyError:
-            logger.error('there needs to be at least the "input" key in the data')
-        # do the work
-        try:
-            if project_id in self.projects and not data.get('rebuild',False):
-                # test if default options changed
-                if self.projects[project_id].options['options'] != data['options']:
-                    self.projects[project_id] = litrunner.Litrunner(data,logger)
-                else:
-                    # the logger needs to be renewed, has info from old thread
-                    # and so on
-                    self.projects[project_id].logger = logger
-            else:
-                # completely new
-                self.projects[project_id] = litrunner.Litrunner(data,logger)
-            # now run the project
-            self.projects[project_id].run()
-        except Exception as e:
-            logger.error('an unexpected error occured "{0}"'.format(e))
-        finally:
-            pass
         # send some response
-        socket.send_json(['done',{'aaa':'hha'}])
+        socket.send_json(super(ZmqHandler,self).run(data,logger=logger))
 
 class RSTDaemon(daemonize.Daemon):
 
@@ -57,7 +33,7 @@ class RSTDaemon(daemonize.Daemon):
 
     def start(self):
         self.server = zmqserver.ZmqProcess(zmq.REP,host=self.host,
-                port=self.port,bind=True,Handler=Handler)
+                port=self.port,bind=True,Handler=ZmqHandler)
         signal.signal(signal.SIGINT,self.interupt)
         super().start()
 

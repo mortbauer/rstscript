@@ -163,7 +163,7 @@ class PythonProcessor(BaseProcessor):
             en = tr.find('File "<rstscript.dynamic>"')
             self.traceback.write(tr[:st])
             self.traceback.write(tr[en:])
-            self.logger.warning('failed on line {0} with {1}'.
+            self.logger.warn('failed on line {0} with {1}'.
                     format(codechunk.codeobject.co_firstlineno,tr[tr.rfind('\n')+1:]))
         finally:
             sys.stdout = self.stdout_sys
@@ -172,8 +172,14 @@ class PythonProcessor(BaseProcessor):
         self.stderr.truncate()
         yield hunks.CodeIn(codechunk.source)
         yield hunks.CodeStdErr(self.stderr.getvalue())
+        self.stderr.seek(0)
+        self.stderr.truncate()
         yield hunks.CodeTraceback(self.traceback.getvalue())
+        self.traceback.seek(0)
+        self.traceback.truncate()
         yield hunks.CodeStdOut(self.stdout.getvalue())
+        self.stdout.seek(0)
+        self.stdout.truncate()
         # for autoprinting
         if codechunk.assign:
             coa = codechunk.assign

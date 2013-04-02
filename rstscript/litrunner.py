@@ -46,7 +46,7 @@ class Litrunner(object):
                 self.woutput.seek(0)
             return True
         except Exception as e:
-            self.logger.warning(e)
+            self.logger.warn(e)
             return False
 
     def closefiles(self):
@@ -59,7 +59,7 @@ class Litrunner(object):
                     f.write(self.woutput.getvalue())
             return True
         except Exception as e:
-            self.logger.warning(e)
+            self.logger.warn(e)
             return False
 
     def set_defaults(self):
@@ -69,7 +69,7 @@ class Litrunner(object):
             else:
                 return {}
         except Exception as e:
-            self.logger.warning('default chunk options "{0}" are invalid "{1}"'
+            self.logger.warn('default chunk options "{0}" are invalid "{1}"'
                     .format(self.options['options'],e))
             return {}
 
@@ -186,7 +186,7 @@ class Litrunner(object):
                 else:
                     return self.defaults
             except Exception as e:
-                self.logger.warning('couldn\'t parse options {2} in line "{0}", "{1}"'
+                self.logger.warn('couldn\'t parse options {2} in line "{0}", "{1}"'
                         .format(linenumber,e,repr(line.strip())))
                 return self.defaults
 
@@ -270,7 +270,7 @@ class Litrunner(object):
                     for formatted in self.read(self.input):
                         pass
                 else:
-                    self.logger.warning('no job specified, don\'t do anything')
+                    self.logger.warn('no job specified, don\'t do anything')
                 self.closefiles()
                 return True
             except Exception as e:
@@ -281,3 +281,37 @@ class Litrunner(object):
         else:
             return False
 
+
+class LitServer(object):
+    def __init__(self,logger):
+        self.projects = {}
+        self.logger = logger
+
+    def run(self,data,logger=None):
+        if not logger:
+            logger = self.logger
+        # test if project is new
+        try:
+            project_id = (data['input'],data['woutput'],data['toutput'])
+        except KeyError:
+            logger.error('there needs to be at least the "input" key in the data')
+        # do the work
+        try:
+            if project_id in self.projects and not data.get('rebuild',False):
+                # test if default options changed
+                if self.projects[project_id].options['options'] != data['options']:
+                    self.projects[project_id] = Litrunner(data,logger)
+                else:
+                    # the logger needs to be renewed, has info from old thread
+                    # and so on
+                    self.projects[project_id].logger = logger
+            else:
+                # completely new
+                self.projects[project_id] = Litrunner(data,logger)
+            # now run the project
+            self.projects[project_id].run()
+        except Exception as e:
+            logger.error('an unexpected error occured "{0}"'.format(e))
+        finally:
+            pass
+        return ['done',{}]

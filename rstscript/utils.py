@@ -97,7 +97,7 @@ def import_plugins(plugindir,logger):
         logger.info('loaded "{1}" plugins from "{0}"'.format(plugindir,len(plugin_modules)))
         return plugin_modules
     else:
-        logger.warning('plugindir "{0}" doesn\'t exist'.format(plugindir))
+        logger.warn('plugindir "{0}" doesn\'t exist'.format(plugindir))
         return {}
 
 def make_logger(logname,logfile=None,debug=False,quiet=True,loglevel='WARNING',
