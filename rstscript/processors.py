@@ -50,8 +50,9 @@ class LitVisitor(ast.NodeTransformer):
     objects do not set maxdepth bigger than 1, except you know what you do, but
     probaly the compilation will fail"""
 
-    def __init__(self,maxdepth=1):
+    def __init__(self,inputfilename,maxdepth=1):
         self.maxdepth = maxdepth
+        self.inputfilename = inputfilename
         self.CodeChunk = collections.namedtuple('CodeChunk',['codeobject','source','assign'])
 
     def _get_last_lineno(self,node):
@@ -76,7 +77,7 @@ class LitVisitor(ast.NodeTransformer):
         source = '\n'.join(raw[node.lineno-1:self._get_last_lineno(node)])
         # fix linenumber, so it represents linenumber of original file
         node.lineno = node.lineno + start_lineno
-        codeobject = compile(ast.Module([node]),"<rstscript.dynamic>",'exec')
+        codeobject = compile(ast.Module([node]),"{0}".format(self.inputfilename),'exec')
         #source = meta.asttools.dump_python_source(node)
         auto = self._autoprint(node)
         return self.CodeChunk(codeobject,source,auto)
@@ -118,7 +119,8 @@ class PythonProcessor(BaseProcessor):
         self.traceback = io.StringIO()
         self.stdout_sys = sys.stdout
         self.stderr_sys = sys.stderr
-        self.visitor = LitVisitor()
+        self.inputfilename = appoptions['woutput']
+        self.visitor = LitVisitor(self.inputfilename)
         self.plt = False
         self.init = True
         if appoptions['ipython_connection']:
@@ -160,7 +162,7 @@ class PythonProcessor(BaseProcessor):
             # remove all line until a line containing rstscript.dynamic except
             # the first
             st = tr.find('\n')+1
-            en = tr.find('File "<rstscript.dynamic>"')
+            en = tr.find('File "{0}"'.format(self.inputfilename))
             self.traceback.write(tr[:st])
             self.traceback.write(tr[en:])
             self.logger.warn('failed on line {0} with {1}'.

@@ -2,6 +2,7 @@ import os
 import ujson
 import collections
 import pprint
+import textwrap
 from io import StringIO
 
 from . import hunks
@@ -34,6 +35,7 @@ class Litrunner(object):
         self.defaults = self.set_defaults()
         self.register_plugins()
         self.woutput = StringIO()
+        self.toutput = StringIO()
         # set up a memory of chunks
         self.chunks = []
 
@@ -41,7 +43,7 @@ class Litrunner(object):
         try:
             self.input = open(self.options['input'],'r')
             if self.options['toutput']:
-                self.toutput = open(self.options['toutput'],'w')
+                self.toutput.seek(0)
             if not self.options['noweave']:
                 self.woutput.seek(0)
             return True
@@ -53,7 +55,8 @@ class Litrunner(object):
         try:
             self.input.close()
             if self.options['toutput']:
-                self.toutput.close()
+                with open(self.options['toutput'],'w') as f:
+                    f.write(self.toutput.getvalue())
             if not self.options['noweave']:
                 with open(self.options['woutput'],'w') as f:
                     f.write(self.woutput.getvalue())
@@ -152,26 +155,21 @@ class Litrunner(object):
         def buildchunk(number,linenumber,chunktype,content):
             content.truncate()
             content.seek(0)
+            # compare if something has changed, if nothing changed we can go on
             if not same(number,content):
-                if chunktype == 'code':
+                if chunktype == 'code': # write code
                     options = getoptions(content.readline().strip(),linenumber)
                     raw = content.read()
-                    if hasattr(self,'toutput'):
-                        self.toutput.write(raw)
-                else:
-                    raw = content.read()
+                    self.toutput.write(raw)
+                else: # write text commented
                     options = {}
+                    raw = content.read()
+                    self.toutput.write(textwrap.indent(raw,'# '))
                 chunk = Chunk(number,linenumber,chunktype,options,raw)
                 content.seek(0)
                 self.logger.info(chunk)
                 yield chunk
             else:
-                # tangling doens't care about caching
-                if self.options['toutput']:
-                    # skip options
-                    if chunktype == 'code':
-                        content.readline()
-                        self.toutput.write(content.read())
                 content.seek(0)
                 self.logger.info('chunk "{0}" is unchanged'.format(number))
 
