@@ -16,13 +16,16 @@ class Client(object):
         self.max_port = max_port
         self.max_tries = max_tries
         self.pull_sock = self.context.socket(zmq.PULL)
+        self.pull_sock.setsockopt(zmq.LINGER, 0)
         self.answer_loop = ioloop.IOLoop()
         self.answer_loop.add_timeout(datetime.timedelta(seconds=2),
                 self.timedout)
         self.pull_loop = ioloop.IOLoop()
+        self.answer = None
 
     def connect(self):
         self.answer_sock = self.context.socket(zmq.REQ)
+        self.answer_sock.setsockopt(zmq.LINGER, 0)
         self.answer_sock.connect('tcp://{host}:{port}'.
                 format(host=self.host,port=self.port))
         self.answer_stream = zmqstream.ZMQStream(
@@ -32,16 +35,15 @@ class Client(object):
     def timedout(self):
         self.answer_loop.stop()
         self.answer_sock.close()
-        self.connect()
-        self.inner = self.context.socket(zmq.PUSH)
-        self.inner.connect('inproc://rstscript')
-        self.inner.send_json(['timeout'])
-        self.inner.close()
+        self.answer = None
 
     def ping(self):
         self.answer_sock.send_json(['ping',{}])
         self.answer_loop.start()
-        return True
+        if self.answer:
+            return True
+        else:
+            return False
 
     def stop(self):
         self.answer_sock.send_json(['stop',{}])
@@ -72,6 +74,7 @@ class Client(object):
 
     def answer_handler(self,data):
         # for now just stop the loop
+        self.answer = data
         self.answer_loop.stop()
 
     def disconnect(self):

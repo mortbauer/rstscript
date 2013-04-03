@@ -42,6 +42,7 @@ def make_server_parser():
     start = subparsers.add_parser('start',help='start the server')
     stop = subparsers.add_parser('stop',help='stop the server')
     restart = subparsers.add_parser('restart',help='retstart the server')
+    status = subparsers.add_parser('status',help='get the server status')
 
     return pre_parser,parser
 
@@ -134,8 +135,6 @@ def server_main(argv=None):
     # create the client
     mclient = client.Client(configs['host'],configs['port'])
     mclient.connect()
-    inner = mclient.context.socket(zmq.PULL)
-    inner.bind('inproc://rstscript')
 
     def startserver():
         try:
@@ -148,7 +147,6 @@ def server_main(argv=None):
     def stopserver():
         # innproc communication
         mclient.stop()
-        msg = inner.recv_json()
         return True
 
     if configs['command'] == 'stop':
@@ -156,18 +154,13 @@ def server_main(argv=None):
     elif configs['command'] == 'start':
         startserver()
     elif configs['command'] == 'restart':
-        if stopserver():
-            inner.close()
-            # ugly hack, but outherwise I don't know how to bring the
-            # socket into the send state again
-            del mclient,inner
-            mclient = client.Client(configs['host'],configs['port'])
-            mclient.connect()
-            inner = mclient.context.socket(zmq.PULL)
-            inner.bind('inproc://rstscript')
-            startserver()
+        print('not implemented yes, run sto and start manually')
+    elif configs['command'] == 'status':
+        if mclient.ping():
+            print('server is running')
+        else:
+            print('server seems down')
 
-    inner.close()
     mclient.close()
 
 def run_locally(options):
