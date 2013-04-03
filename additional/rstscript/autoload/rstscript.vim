@@ -1,4 +1,5 @@
 if has('python') || has('python3')
+    echom "setup rstscript plugin"
     function! s:update_buffers(outputfile)
         try
             exec "checktime" a:outputfile

@@ -33,6 +33,20 @@ an autocommand for calling |rstscript#Run| every time you save the buffer
 	it calls that function and sets up an autocommand to invoke
 	|rstscript#Run| on every buffer write.
 
+*rstscript#RunUpdate*
+
+	this function calls |rstscript#Run| and the update the buffer of the
+	outputfile if it is opened in vim. This function is called by
+	|rstscript#Watch| automatically on every buffer saveing.
+
+
+In order to reload the changed output buffer automatically without asking you
+need to set |autoread| for that buffer. If you don't like that you know have
+to press enter after each saving you could map some keys for convenience, for
+example:
+
+	:nnoremap <leader>w :w<CR><CR>
+	:inoremap <leader>w :w<CR><CR>
 ==============================================================================
 
 vim:tw=78:noet:wrap:ts=4:ft=help:norl:
