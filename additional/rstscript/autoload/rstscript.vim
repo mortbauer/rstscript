@@ -52,7 +52,7 @@ else:
 EOF
     endfun
 
-    function! RstscriptWatchCurrentBuffer(outputfile)
+    function! rstscript#Watch(outputfile)
         call rstscript#SetupLitrunner(a:outputfile)
         augroup runupdate
             exec "autocmd BufWritePost <buffer> call rstscript#RunUpdate(\""eval('a:outputfile')"\")"
@@ -91,7 +91,7 @@ else:
 EOF
     endfun
 
-    function! rstscript#WatchCurrentBuffer(outputfile)
+    function! rstscript#Watch(outputfile)
         call rstscript#SetupLitrunner(a:outputfile)
         autocmd BufWritePost <buffer> call rstscript#RunUpdate(a:outputfile)
     endfun

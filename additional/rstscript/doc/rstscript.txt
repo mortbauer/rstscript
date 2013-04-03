@@ -1,0 +1,38 @@
+*rstscript.txt*              Rstscript                Last Change: 03.04.2013
+
+                                Version 7.3.5
+
+Plugin to interact easily with rstscript.
+
+|rstscript-usage|          Usage
+
+
+==============================================================================
+USAGE                                                   *rstscript-usage*
+
+The basic steps for using this plugin are:
+	- setup the buffer by calling |rstscript#SetupLitrunner|
+	- run litrunner on the buffer by calling |rstscript#Run|
+
+For convenience there is also a function (|rstscript#Watch|) which will setup
+an autocommand for calling |rstscript#Run| every time you save the buffer
+
+*rstscript#SetupLitrunner*
+
+	you need to call it with an argument specifieng the filename of the
+	weaving output. It will setup a project for the current buffer.
+
+*rstscript#Run*
+
+	no argument needed for this function. It will run the project if already
+	setuped.
+
+*rstscript#Watch*
+
+	this function needs the same argument as |rstscript#SetupLitrunner| since
+	it calls that function and sets up an autocommand to invoke
+	|rstscript#Run| on every buffer write.
+
+==============================================================================
+
+vim:tw=78:noet:wrap:ts=4:ft=help:norl:
