@@ -18,7 +18,7 @@ class ZmqHandler(zmqserver.MessageHandler,litrunner.LitServer):
         self.projects = {}
 
     def run(self,socket,data,logger):
-        # send some response
+        # send some response by calling Litrunner.run method
         socket.send_json(super(ZmqHandler,self).run(data,logger=logger))
 
 class RSTDaemon(daemonize.Daemon):

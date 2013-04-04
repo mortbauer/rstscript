@@ -12,10 +12,9 @@ import platform
 import threading
 
 import zmq
-from rstscript.utils import import_plugins
 from rstscript import kernel
 from rstscript import client
-from .server import ColorizingStreamHandler
+from rstscript.utils import import_plugins, ColorizingStreamHandler
 
 def make_server_parser():
     default_configdir = os.path.join(os.getenv("XDG_CONFIG_HOME",''),"rstscript")
@@ -114,7 +113,6 @@ def make_initial_setup(configfilename):
 
 def server_main(argv=None):
     from rstscript import daemonize
-    from rstscript import server
     # read deafult configs
     configs = yaml.load(pkgutil.get_data(__name__,'defaults/config.yml').decode('utf-8'))
     if not argv:
@@ -190,8 +188,7 @@ def run_locally(options):
     try:
         L = Litrunner(options,logger)
     except Exception as e:
-        logger.error('an unexpected error occured "{0}"'.format(e))
-        raise e
+        logger.exception('an unexpected error occured')
 
     #context = zmq.Context()
     #sock =  context.socket(zmq.REP)

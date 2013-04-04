@@ -70,7 +70,10 @@ class LitVisitor(ast.NodeTransformer):
                 if not type(x) in (ast.Name,ast.Num,ast.Str):
                     bmc.append(x)
             if len(bmc)>0:
-                return node.targets[0].id
+                if hasattr(node.targets[0],'id'):
+                    return node.targets[0].id
+                #else:
+                    #return node.targets[0]
 
     def _compile(self,node,start_lineno,raw):
         # get source code of the node, must be before the next statement

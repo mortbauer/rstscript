@@ -1,7 +1,9 @@
 import os
 import ujson
 import collections
+import traceback
 import pprint
+import ipdb
 import textwrap
 from io import StringIO
 
@@ -167,7 +169,7 @@ class Litrunner(object):
                     self.toutput.write(textwrap.indent(raw,'# '))
                 chunk = Chunk(number,linenumber,chunktype,options,raw)
                 content.seek(0)
-                self.logger.info(chunk)
+                self.logger.info('reading: {0}'.format(chunk))
                 yield chunk
             else:
                 content.seek(0)
@@ -194,17 +196,17 @@ class Litrunner(object):
             if line_start == start:
                 if content.tell() != 0:
                     yield from buildchunk(chunkn,linen_of_chunkstart,'text',content)
+                    chunkn += 1
                 delimtercounter += 1
                 linen_of_chunkstart = linecounter
-                chunkn += 1
                 content.write(line[token_length:])
             # on end of chunk delimiter yield code
             elif line_start == end:
                 if content.tell() != 0:
                     yield from buildchunk(chunkn,linen_of_chunkstart,'code',content)
+                    chunkn += 1
                 delimtercounter -= 1
                 linen_of_chunkstart = linecounter + 1
-                chunkn += 1
             # remove the comment
             elif line_start == comment:
                 content.write(line[token_length:])
@@ -257,6 +259,7 @@ class Litrunner(object):
 
                 if not self.options['noweave']:
                     for chunkn,formatted in self.format(self.weave(self.read(self.input))):
+                        #ipdb.set_trace()
                         if chunkn > 0 and self.chunks[chunkn-1][1] > 0:
                             self.woutput.seek(self.chunks[chunkn-1][1])
                         for hunk in formatted:
@@ -271,10 +274,11 @@ class Litrunner(object):
                     self.logger.warn('no job specified, don\'t do anything')
                 self.closefiles()
                 return True
-            except Exception as e:
-                self.logger.error(e)
+            except Exception:
+                self.logger.exception('an unexpected error occured:\n\n{0}'.
+                        format(traceback.format_exc()))
+                #ipdb.set_trace()
                 self.closefiles()
-                raise e
                 return False
         else:
             return False
@@ -308,8 +312,8 @@ class LitServer(object):
                 self.projects[project_id] = Litrunner(data,logger)
             # now run the project
             self.projects[project_id].run()
-        except Exception as e:
-            logger.error('an unexpected error occured "{0}"'.format(e))
+        except Exception:
+            logger.exception('an unexpected error occured')
         finally:
             pass
         return ['done',{}]
