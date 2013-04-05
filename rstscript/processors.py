@@ -111,13 +111,12 @@ class LitVisitor(ast.NodeTransformer):
 
     def visit(self, node, start_lineno,raw,depth=0):
         """Visit a node."""
-
         if depth >= self.maxdepth:
             method = 'visit_' + node.__class__.__name__
             visitor = getattr(self, method, None)
-            node.lineno = node.lineno + start_lineno
             # get source code of the node, must be before the next statement
             node.source = '\n'.join(raw[node.lineno-1:self._get_last_lineno(node)])
+            node.lineno = node.lineno + start_lineno
             if visitor:
                 yield from visitor(node)
             else:
@@ -177,7 +176,7 @@ class PythonProcessor(BaseProcessor):
             os.mkdir(self.options['figdir'])
         return self.options['figdir']
 
-    def execute(self,codechunk):
+    def execute(self,codechunk,chunkoptions):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
         self.stdout.seek(0)
@@ -221,9 +220,24 @@ class PythonProcessor(BaseProcessor):
         if codechunk.assign:
             coa = codechunk.assign
             try:
-                yield hunks.CodeResult('{0} = {1}'.format(coa,self.globallocal[coa]))
-            except KeyError:
-                pass
+                res = self.globallocal[coa]
+            except:
+                self.logger.warn('failed to autoprint "{0}"'.format(coa))
+                res = None
+            try:
+                res = float(res)
+                yield hunks.CodeResult('{0} = {1:.{2}f}'.
+                        format(coa,res,chunkoptions.get('prec',3)))
+            except:
+                # test if it can printed with latex
+                if hasattr(res,'atoms') and 'sympy' in sys.modules:
+                    import sympy
+                    yield hunks.CodeResult('{0} = {1}'.format(
+                        coa,res.evalf(n=chunkoptions.get('prec',3))))
+                        #coa,sympy.latex(res.evalf(n=chunkoptions.get('prec',3)))))
+                else:
+                    #self.logger.info('type is {0}:{1}'.format(coa,type(res)))
+                    yield hunks.CodeResult('{0} = {1}'.format(coa,res))
 
         #return hunks.CHunk(cs,coo,cout,ce,ct,self.globallocal)
 
@@ -260,13 +274,12 @@ class PythonProcessor(BaseProcessor):
         tree = ast.parse(chunk.raw)
         lhunks = []
         for codechunk in self.visitor.visit(tree,chunk.lineNumber,chunk.raw.splitlines()):
-            for hunk in self.execute(codechunk):
+            for hunk in self.execute(codechunk,chunk.options):
                 # test if hunk is empty or not, only append not empty
                 if hunk.simple:
                     lhunks.append(hunk)
         # autosave figures TODO
         if chunk.options.get('af',False):
-            print(chunk.options['af'])
             try:
                 for fig in self._saveallfigures(chunk.options,chunk.number):
                     lhunks.append(fig)

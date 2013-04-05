@@ -35,7 +35,7 @@ class Text(Node):
         return '\n{}\n'.format(self.text)
 
 class CodeBlock(Node):
-    template = '\n\n.. code-block:: {lang}\n\n{code}\n\n'
+    template = '\n\n.. code-block:: {lang}\n\n{code}\n'
     def __init__(self,code,label='',language='python'):
         self.code = textwrap.indent(code.strip(),'\t')
         self.lang = language
