@@ -50,9 +50,10 @@ class LitVisitor(ast.NodeTransformer):
     objects do not set maxdepth bigger than 1, except you know what you do, but
     probaly the compilation will fail"""
 
-    def __init__(self,inputfilename,maxdepth=1):
+    def __init__(self,inputfilename,logger,maxdepth=1):
         self.maxdepth = maxdepth
         self.inputfilename = inputfilename
+        self.logger = logger
         self.CodeChunk = collections.namedtuple('CodeChunk',['codeobject','source','assign'])
 
     def _get_last_lineno(self,node):
@@ -75,21 +76,52 @@ class LitVisitor(ast.NodeTransformer):
                 #else:
                     #return node.targets[0]
 
-    def _compile(self,node,start_lineno,raw):
-        # get source code of the node, must be before the next statement
-        source = '\n'.join(raw[node.lineno-1:self._get_last_lineno(node)])
+    def _compile(self,node):
         # fix linenumber, so it represents linenumber of original file
-        node.lineno = node.lineno + start_lineno
         codeobject = compile(ast.Module([node]),"{0}".format(self.inputfilename),'exec')
         #source = meta.asttools.dump_python_source(node)
         auto = self._autoprint(node)
-        return self.CodeChunk(codeobject,source,auto)
+        return self.CodeChunk(codeobject,node.source,auto)
+
+    def _detect_matplotlib(self,node):
+        for modpart in node.module.split('.'):
+            if modpart in ['pyplot','pylab','sympy']:
+                if not 'matplotlib.pyplot' in sys.modules:
+                    self.logger.info('detected "{0}" and imported matplotlib'
+                    ' before to choose backend "Agg"'.format(modpart))
+                    return self.CodeChunk(
+                            compile('import matplotlib;matplotlib.use("Agg")',
+                                '<rstscript.dynamic>','exec'),'','')
+                else:
+                    self.logger.info('detected import of matplotlib.pyplot, '
+                    'but backend was already choosen')
+
+    def visit_Import(self,node):
+        newnode = self._detect_matplotlib(node)
+        if newnode:
+            yield newnode
+        yield self._compile(node)
+
+
+    def visit_ImportFrom(self,node):
+        newnode = self._detect_matplotlib(node)
+        if newnode:
+            yield newnode
+        yield self._compile(node)
 
     def visit(self, node, start_lineno,raw,depth=0):
         """Visit a node."""
 
         if depth >= self.maxdepth:
-            yield self._compile(node,start_lineno,raw)
+            method = 'visit_' + node.__class__.__name__
+            visitor = getattr(self, method, None)
+            node.lineno = node.lineno + start_lineno
+            # get source code of the node, must be before the next statement
+            node.source = '\n'.join(raw[node.lineno-1:self._get_last_lineno(node)])
+            if visitor:
+                yield from visitor(node)
+            else:
+                yield self._compile(node)
         else:
             depth += 1
             for child in ast.iter_child_nodes(node):
@@ -112,7 +144,7 @@ class NoneProcessore(BaseProcessor):
 
 class PythonProcessor(BaseProcessor):
     name = 'python'
-    defaults = {'autofigure':False}
+    defaults = {'af':False}
 
     def __init__(self,appoptions,logger):
         super().__init__(appoptions,logger)
@@ -123,7 +155,7 @@ class PythonProcessor(BaseProcessor):
         self.stdout_sys = sys.stdout
         self.stderr_sys = sys.stderr
         self.inputfilename = appoptions['woutput']
-        self.visitor = LitVisitor(self.inputfilename)
+        self.visitor = LitVisitor(self.inputfilename,logger=self.logger)
         self.plt = False
         self.init = True
         if appoptions['ipython_connection']:
@@ -198,21 +230,27 @@ class PythonProcessor(BaseProcessor):
     def _saveallfigures(self,options,number):
         if not self.plt:
             try:
+                if not 'matplotlib.pyplot' in sys.modules:
+                    import matplotlib
+                    matplotlib.use('Agg')
                 from matplotlib import pyplot
                 self.plt = pyplot
+                self.logger.info('imported matplotlib.pyplot')
             except:
                 raise rstscript.RstscriptException('you need matplotlib for using autofigure')
         for num in self.plt.get_fignums():
             if num > 1:
                 self.logger.error('there are several figures in this chunks, not supported so far')
             else:
-                label = options.get('label',number)
+                label = options.get('label',number).replace(' ','_') # whitespace can't behandeled by sphinx currently
                 fig = self.plt.figure(num)
                 name = '{0}.png'.format(label)
                 figpath =os.path.join(self.get_figdir(),name)
                 fig.savefig(figpath)
                 self.logger.info('saved figure "{0}" to "{1}"'.format(label,figpath))
-                yield hunks.Figure(figpath,label=label,
+                # write only path relative to file, otherwise sphinx will complain
+                yield hunks.Figure(os.path.relpath(figpath,
+                    os.path.split(self.options['woutput'])[0]),label=label,
                         desc=options.get('desc',''),
                         width=options.get('width','100%'),
                         height=options.get('height'),
@@ -227,7 +265,8 @@ class PythonProcessor(BaseProcessor):
                 if hunk.simple:
                     lhunks.append(hunk)
         # autosave figures TODO
-        if chunk.options.get('autofigure',False):
+        if chunk.options.get('af',False):
+            print(chunk.options['af'])
             try:
                 for fig in self._saveallfigures(chunk.options,chunk.number):
                     lhunks.append(fig)
