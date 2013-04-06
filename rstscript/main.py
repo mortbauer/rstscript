@@ -2,7 +2,6 @@ import os
 import sys
 import yaml
 import time
-import ujson
 import socket
 import select
 import pkgutil
@@ -11,7 +10,6 @@ import rstscript
 import platform
 import threading
 
-import zmq
 from rstscript import kernel
 from rstscript import client
 from rstscript.utils import import_plugins, ColorizingStreamHandler
@@ -164,7 +162,7 @@ def server_main(argv=None):
 def run_locally(options):
     import logging
     from rstscript.litrunner import Litrunner
-    if not options['quiet']:
+    if not options.get('quiet'):
         # getlogger
         logger = logging.getLogger('rstscript')
         def testhandlers(logger):
@@ -178,38 +176,19 @@ def run_locally(options):
             formatter = logging.Formatter('%(levelname)s %(name)s: %(message)s')
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-        if options['debug']:
+        if options.get('debug'):
             logger.setLevel('DEBUG')
         else:
-            logger.setLevel(getattr(logging,options['loglevel'].upper(),'WARNING'))
+            logger.setLevel(getattr(logging,options.get(
+                'loglevel','WARNING').upper(),'WARNING'))
     # load plugins
-    plugins = import_plugins(options['plugindir'],logger)
+    plugins = import_plugins(options.get('plugindir',''),logger)
     # do the work
     try:
         L = Litrunner(options,logger)
     except Exception as e:
         logger.exception('an unexpected error occured')
 
-    #context = zmq.Context()
-    #sock =  context.socket(zmq.REP)
-    #sock.bind('inproc://rstscriptserver')
-
-    #def server_loop():
-        #while True:
-            #data = sock.recv_json()
-            #if data[0] == 'run':
-                #result = L.run()
-                #if result:
-                    #sock.send_json(['done',{}])
-                #else:
-                    #sock.send_json([result,])
-
-            #else:
-                #sock.send_json(data)
-
-    #t = threading.Thread(target=server_loop,daemon=True)
-    #t.start()
-    #return context
     return L
 
 
@@ -234,13 +213,12 @@ def client_main(argv=None):
     # parse default options
     if configs['options']:
         try:
-            o = ujson.loads(configs['options'])
-            if type(o) == str:
+            o = eval(configs['options'])
+            if type(o) != dict:
                 raise ValueError
-            configs['options'] = o
+            configs['options'] = o 
         except ValueError:
-            print('couldn\'t parse default options '
-            '"--defaults", please check again\n',file=sys.stderr)
+            print('couldn\'t evaluate defaults please check again\n',file=sys.stderr)
             configs['options'] = {}
     # add the source directory to the config
     configs['rootdir'] = os.path.abspath('.')

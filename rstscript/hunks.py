@@ -32,10 +32,30 @@ class Text(Node):
         self.text = text.strip()
     @property
     def formatted(self):
-        return '\n{}\n'.format(self.text)
+        return '\n\n{}\n'.format(self.text)
+
+class MathBlock(Node):
+    template = '\n\n.. math::\n\n{code}\n'
+    def __init__(self,code,label=''):
+        self.code = textwrap.indent(code.strip(),'\t')
+        self.label = label
+    @property
+    def formatted(self):
+        if len(self.code) > 0:
+            return self.template.format(code=self.code)
+        else:
+            return ''
+
+    @property
+    def simple(self):
+        if len(self.code) > 0:
+            #return '\n{}\n'.format(self.code)
+            return self.template.format(code=self.code)
+        else:
+            return ''
 
 class CodeBlock(Node):
-    template = '\n\n.. code-block:: {lang}\n\n{code}\n'
+    template = '\n\n.. code-block:: {lang}\n\n{code}'
     def __init__(self,code,label='',language='python'):
         self.code = textwrap.indent(code.strip(),'\t')
         self.lang = language
@@ -50,7 +70,7 @@ class CodeBlock(Node):
     @property
     def simple(self):
         if len(self.code) > 0:
-            return '\n{}\n'.format(self.code)
+            return '\n{}'.format(self.code)
         else:
             return ''
 

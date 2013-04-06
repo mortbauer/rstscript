@@ -1,5 +1,4 @@
 import os
-import ujson
 import collections
 import traceback
 import pprint
@@ -34,7 +33,7 @@ class Litrunner(object):
         self.formatters = {}
         self.options = app_options
         self.logger = logger
-        self.defaults = self.set_defaults()
+        self.set_defaults()
         self.register_plugins()
         self.woutput = StringIO()
         self.toutput = StringIO()
@@ -44,39 +43,33 @@ class Litrunner(object):
     def openfiles(self):
         try:
             self.input = open(self.options['input'],'r')
-            if self.options['toutput']:
+            if self.options.get('toutput',''):
                 self.toutput.seek(0)
-            if not self.options['noweave']:
+            if not self.options.get('noweave',False):
                 self.woutput.seek(0)
             return True
         except Exception as e:
-            self.logger.warn(e)
+            self.logger.exception(e)
             return False
 
     def closefiles(self):
         try:
             self.input.close()
-            if self.options['toutput']:
+            if self.options.get('toutput',''):
                 with open(self.options['toutput'],'w') as f:
                     f.write(self.toutput.getvalue())
-            if not self.options['noweave']:
+            if not self.options.get('noweave',False):
                 with open(self.options['woutput'],'w') as f:
                     f.write(self.woutput.getvalue())
             return True
         except Exception as e:
-            self.logger.warn(e)
+            self.logger.exception(e)
             return False
 
     def set_defaults(self):
-        try:
-            if 'options' in self.options and self.options['options']:
-                return self.options['options']
-            else:
-                return {}
-        except Exception as e:
-            self.logger.warn('default chunk options "{0}" are invalid "{1}"'
-                    .format(self.options['options'],e))
-            return {}
+        self.defaults = {'proc':'python','form':'compact'}
+        if 'options' in self.options and self.options['options']:
+            self.defaults.update(self.options)
 
     def register_plugins(self):
         # register all loaded plugins, at least try it
@@ -178,7 +171,10 @@ class Litrunner(object):
         def getoptions(line,linenumber):
             try:
                 if line:
-                    d = ujson.loads(line)
+                    try:
+                        d = eval(line)
+                    except:
+                        self.logger.error('couldn\'t evaluate options "{0}"'.format(line))
                     for key in self.defaults:
                         d.setdefault(key,self.defaults[key])
                     self.logger.info(d)
@@ -227,11 +223,13 @@ class Litrunner(object):
     def weave(self,chunks):
         for chunk in chunks:
             if chunk.type == 'code':
-                processor = self.get_processor(
-                        chunk.options.get('proc',self.options.get('proc','python')))
+                processor = self.get_processor(chunk.options['proc'])
                 if processor:
                     for cchunk in processor(chunk):
                         yield cchunk
+                else:
+                    self.logger.warn('no processor named "{0}"'.
+                            format(chunk.options['proc']))
             elif chunk.type == 'text':
                 yield processors.CChunk(chunk,[hunks.Text(chunk.raw)])
             else:
@@ -241,10 +239,12 @@ class Litrunner(object):
     def format(self,cchunks):
         for cchunk in cchunks:
             if cchunk.chunk.type == 'code':
-                formatter = self.get_formatter(
-                        cchunk.chunk.options.get('form',self.options.get('form','compact')))
+                formatter = self.get_formatter(cchunk.chunk.options['form'])
                 if formatter:
                     yield from formatter(cchunk)
+                else:
+                    self.logger.warn('no formatter named "{0}"'.
+                            format(cchunk.chunk.options['form']))
             elif cchunk.chunk.type == 'text':
                 yield cchunk.chunk.number,[cchunk.hunks[0].formatted]
             else:
@@ -257,7 +257,7 @@ class Litrunner(object):
                 self.logger.info('Run Litrunner with options "{0}"'.
                         format(pprint.pformat(self.options)))
 
-                if not self.options['noweave']:
+                if not self.options.get('noweave',False):
                     for chunkn,formatted in self.format(self.weave(self.read(self.input))):
                         #ipdb.set_trace()
                         if chunkn > 0 and self.chunks[chunkn-1][1] > 0:
@@ -267,7 +267,7 @@ class Litrunner(object):
                             self.chunks[chunkn][1] = self.woutput.tell()
                     if self.woutput.tell():
                         self.woutput.truncate()
-                elif self.options['noweave'] and self.options['toutput']:
+                elif self.options.get('noweave',False) and self.options.get('toutput',''):
                     for formatted in self.read(self.input):
                         pass
                 else:

@@ -3,6 +3,7 @@ import io
 import sys
 import ast
 import abc
+import ipdb
 #import meta # not needed anymore
 import traceback
 import collections
@@ -57,10 +58,11 @@ class LitVisitor(ast.NodeTransformer):
         self.CodeChunk = collections.namedtuple('CodeChunk',['codeobject','source','assign'])
 
     def _get_last_lineno(self,node):
-        if hasattr(node,'body'):
-            return self._get_last_lineno(node.body[-1])
-        else:
-            return node.lineno
+        maxlineno = 0
+        for x in ast.walk(node):
+            if hasattr(x,'lineno') and x.lineno > maxlineno:
+                maxlineno = x.lineno
+        return maxlineno
 
     def _autoprint(self,node):
         # implement autoprinting discovery
@@ -115,7 +117,10 @@ class LitVisitor(ast.NodeTransformer):
             method = 'visit_' + node.__class__.__name__
             visitor = getattr(self, method, None)
             # get source code of the node, must be before the next statement
-            node.source = '\n'.join(raw[node.lineno-1:self._get_last_lineno(node)])
+            startline = node.lineno-1
+            endline = self._get_last_lineno(node)
+            node.source = '\n'.join(raw[startline:endline])
+            #print('last line',self._get_last_lineno(node),'source',node.source)
             node.lineno = node.lineno + start_lineno
             if visitor:
                 yield from visitor(node)
@@ -153,11 +158,11 @@ class PythonProcessor(BaseProcessor):
         self.traceback = io.StringIO()
         self.stdout_sys = sys.stdout
         self.stderr_sys = sys.stderr
-        self.inputfilename = appoptions['woutput']
+        self.inputfilename = appoptions.get('input','')
         self.visitor = LitVisitor(self.inputfilename,logger=self.logger)
         self.plt = False
         self.init = True
-        if appoptions['ipython_connection']:
+        if appoptions.get('ipython_connection'):
             try:
                 self.ipc = IPythonConnection(appoptions['ipython_connection'])
                 self.logger.info('also executing to ipython kernel "{0}"'
@@ -207,6 +212,7 @@ class PythonProcessor(BaseProcessor):
         self.stdout.truncate()
         self.stderr.truncate()
         yield hunks.CodeIn(codechunk.source)
+        #print(codechunk.source)
         yield hunks.CodeStdErr(self.stderr.getvalue())
         self.stderr.seek(0)
         self.stderr.truncate()
@@ -234,6 +240,7 @@ class PythonProcessor(BaseProcessor):
                     import sympy
                     yield hunks.CodeResult('{0} = {1}'.format(
                         coa,res.evalf(n=chunkoptions.get('prec',3))))
+                    #yield hunks.MathBlock('{0} = {1}'.format(
                         #coa,sympy.latex(res.evalf(n=chunkoptions.get('prec',3)))))
                 else:
                     #self.logger.info('type is {0}:{1}'.format(coa,type(res)))
