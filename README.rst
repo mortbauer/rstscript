@@ -23,7 +23,7 @@ The following ``RstScript`` snippet::
   A very basic RstScript example
   ##############################
 
-  %<{a:true,e:true}
+  %<{"a":True,"e":True}
   a = 'Hello World'
   b = 6
   c = b * 7
