@@ -3,14 +3,11 @@ import io
 import sys
 import ast
 import abc
-import ipdb
-#import meta # not needed anymore
 import traceback
 import collections
 
 import rstscript
 from . import hunks
-from .interactive import IPythonConnection
 
 CChunk = collections.namedtuple('CChunk',['chunk','hunks'])
 
@@ -164,6 +161,7 @@ class PythonProcessor(BaseProcessor):
         self.init = True
         if appoptions.get('ipython_connection'):
             try:
+                from .interactive import IPythonConnection
                 self.ipc = IPythonConnection(appoptions['ipython_connection'])
                 self.logger.info('also executing to ipython kernel "{0}"'
                         .format(os.path.split(self.ipc.cf)[1]))
