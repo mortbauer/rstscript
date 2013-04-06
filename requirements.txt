@@ -1,3 +1,4 @@
 colorama
 PyYaml
-argparse>=1.2
+argparse
+pyzmq
