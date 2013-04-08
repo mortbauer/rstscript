@@ -43,5 +43,5 @@ class IPythonConnection(object):
         self.km.start_channels()
 
     def run_cell(self,code):
-        self.shell = self.km.shell_channel
+        #self.shell = self.km.shell_channel
         self.shell.execute(code)

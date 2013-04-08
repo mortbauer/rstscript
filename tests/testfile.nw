@@ -4,7 +4,7 @@ Hallllo
 Hallo Martin 
 Hallo Susi
 
-%<{"e":true,"a":true,"label":"testplot","desc":"This is my first auto test plot"}
+%<{"e":True,"a":True,"label":"testplot","desc":"This is my first auto test plot"}
 from pylab import *
 plot(1,2)
 print('pfiate')
@@ -39,4 +39,4 @@ d = myfunc
 
 see also `testplot`_
 
-sdlgs
+sdlgs, the value of b is {{ b }}, but this should escape it {{ '{{ b }}' }}

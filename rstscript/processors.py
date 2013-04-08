@@ -159,6 +159,7 @@ class PythonProcessor(BaseProcessor):
         self.visitor = LitVisitor(self.inputfilename,logger=self.logger)
         self.plt = False
         self.init = True
+        self.dict = self.globallocal # just to have some freedom in future, let dict be interface
         if appoptions.get('ipython_connection'):
             try:
                 from .interactive import IPythonConnection
@@ -167,7 +168,8 @@ class PythonProcessor(BaseProcessor):
                         .format(os.path.split(self.ipc.cf)[1]))
             except:
                 self.logger.exception('failed to connect to ipython kernel '
-                '"{0}"'.format(appoptions['ipython_connection']))
+                        '"{0}":\n{1}'.format(appoptions['ipython_connection'],
+                            traceback.format_exc()))
                 self.ipc = None
 
         else:

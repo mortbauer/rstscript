@@ -2,7 +2,7 @@ import os
 import collections
 import traceback
 import pprint
-import ipdb
+import jinja2
 import textwrap
 from io import StringIO
 
@@ -39,6 +39,7 @@ class Litrunner(object):
         self.toutput = StringIO()
         # set up a memory of chunks
         self.chunks = []
+        self.dict = {'b':"test"}
 
     def openfiles(self):
         try:
@@ -98,7 +99,7 @@ class Litrunner(object):
                 self.processors[name] = self.processorClasses[name](
                         self.options,self.logger)
                 self.logger.info('instantiated processor "{0}"'.format(name))
-            return self.processors[name].process
+            return self.processors[name]
         else:
             self.logger.error('there is no processor named "{0}",'
             'i will skip the chunk'.format(name))
@@ -225,13 +226,21 @@ class Litrunner(object):
             if chunk.type == 'code':
                 processor = self.get_processor(chunk.options['proc'])
                 if processor:
-                    for cchunk in processor(chunk):
+                    for cchunk in processor.process(chunk):
+                        self.dict.update(processor.dict)
                         yield cchunk
                 else:
                     self.logger.warn('no processor named "{0}"'.
                             format(chunk.options['proc']))
             elif chunk.type == 'text':
-                yield processors.CChunk(chunk,[hunks.Text(chunk.raw)])
+                temp = jinja2.Template(chunk.raw)
+                try:
+                    rendered = temp.render(self.dict)
+                except:
+                    self.logger.exception('failed to render chunk "{0}"'
+                            .format(chunk.number))
+                    rendered = chunk.raw
+                yield processors.CChunk(chunk,[hunks.Text(rendered)])
             else:
                 self.logger.error('unsupported chunk type {0}'.
                         format(chunk.type))
@@ -259,7 +268,6 @@ class Litrunner(object):
 
                 if not self.options.get('noweave',False):
                     for chunkn,formatted in self.format(self.weave(self.read(self.input))):
-                        #ipdb.set_trace()
                         if chunkn > 0 and self.chunks[chunkn-1][1] > 0:
                             self.woutput.seek(self.chunks[chunkn-1][1])
                         for hunk in formatted:
@@ -277,7 +285,6 @@ class Litrunner(object):
             except Exception:
                 self.logger.exception('an unexpected error occured:\n\n{0}'.
                         format(traceback.format_exc()))
-                #ipdb.set_trace()
                 self.closefiles()
                 return False
         else:
