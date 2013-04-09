@@ -53,7 +53,7 @@ class LitTester(unittest.TestCase):
     def test_astvisitor(self):
         a = "b= lambda x: x*5 +5\ndef hhh(u):\n    b=19\n    return u*b\nm=hhh(9*4+5)"
         tree = ast.parse(a)
-        visitor = processors.LitVisitor()
+        visitor = processors.LitVisitor({},logging.getLogger('test'))
         for node in visitor.visit(tree,1):
             pass
 
