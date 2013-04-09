@@ -1,3 +1,4 @@
 colorama
 PyYaml
 pyzmq
+jinja2

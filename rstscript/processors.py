@@ -7,7 +7,7 @@ import traceback
 import collections
 
 import rstscript
-from . import hunks
+from rstscript import hunks
 
 CChunk = collections.namedtuple('CChunk',['chunk','hunks'])
 

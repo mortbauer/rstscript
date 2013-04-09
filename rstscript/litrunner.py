@@ -6,8 +6,8 @@ import jinja2
 import textwrap
 from io import StringIO
 
-from . import hunks
-from . import processors
+from rstscript import hunks
+from rstscript import processors
 
 Chunk = collections.namedtuple('Chunk',
         ['number','lineNumber', 'type','options','raw'])
